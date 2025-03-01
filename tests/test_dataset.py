@@ -16,12 +16,22 @@ from meteolibre_model.dataset import MeteoLibreDataset, transform_groundstation_
 
 
 @pytest.fixture
-def dataset_fixture():
+def index_file():
     """Create test fixtures for each test"""
     # Create a temporary directory for test files
-    
-    pass
+    return "/mnt/mydisk/index.parquet"
 
+@pytest.fixture
+def dir_index():
+    """Create test fixtures for each test"""
+    # Create a temporary directory for test files
+    return "/mnt/mydisk"
+
+@pytest.fixture
+def groundstations_info():
+    """Create test fixtures for each test"""
+    # Create a temporary directory for test files
+    return "/home/adrienbufort/meteolibre_model/scripts/total_transformed.parquet"
 
 def test_getitem(index_file, dir_index, groundstations_info):
     """Test __getitem__ method"""
@@ -37,6 +47,15 @@ def test_getitem(index_file, dir_index, groundstations_info):
     
     # Get an item
     item = dataset[0]
+    
+    # becnhmark the speed to get the item
+    start_time = datetime.datetime.now()
+    for _ in range(10):
+        item = dataset[_]
+    end_time = datetime.datetime.now()
+    print(f"Time to get 10 items: {end_time - start_time}")
+    
+    exit()
     
     # Check if the item has the expected keys
     assert 'back_0' in item
