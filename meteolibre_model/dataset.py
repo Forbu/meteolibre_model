@@ -12,13 +12,56 @@ import pandas as pd
 # import package for h5 file
 import h5py
 
+columns_measurements = [
+    "RR1",
+    "FF",
+    "DD",
+    "FXY",
+    "DXY",
+    "HXY",
+    "QHXY",
+    "FXI",
+    "DXI",
+    "HXI",
+    "FXI3S",
+    "HFXI3S",
+    "T",
+    "TN",
+    "HTN",
+    "TX",
+    "HTX",
+    "DG",
+    "QDG",
+]
+
+columns_positions = ["LAT_transformed", "LON_transformed"]
 
 def transform_groundstation_data_into_image(df):
     """
     Transform the groundstation data into an image to be compute
-    """
-    pass
+    df have columns :
+    postions_info 'LAT_transformed', 'LON_transformed'
 
+    measurements_info : 'RR1', 'FF', 'DD', 'FXY', 'DXY', 'HXY', 'QHXY', 'FXI',
+              'DXI', 'HXI', 'FXI3S', 'HFXI3S',
+              'T', 'TN', 'HTN', 'TX', 'HTX',
+              'DG', 'QDG'
+    """
+    # get the coordinates of the groundstation
+    lat = df["LAT_transformed"].values
+    lon = df["LON_transformed"].values
+    
+    nb_channels = len(columns_measurements)
+
+    # init the multiple channel image to 0
+    image_result = torch.ones((3472, 3472, nb_channels)) * -100
+
+    # for each ground station, we add the measurements to the image
+    image_result[lat, lon, :] = df[columns_measurements].values
+    
+    mask = image_result != -100
+
+    return mask, image_result
 
 class MeteoLibreDataset(Dataset.Dataset):
     def __init__(
@@ -81,19 +124,21 @@ class MeteoLibreDataset(Dataset.Dataset):
 
         # now we can select the ground station data for the two dates
         df_ground_station_previous = self.groundstations_info.loc[round_date_previous]
-
         df_ground_station_next = self.groundstations_info.loc[round_date_next]
 
         # 3. todo : preprocess the two ground station information to obtain a image of france
-        ground_station_image_previous = transform_groundstation_data_into_image(
+        mask_previous, ground_station_image_previous = transform_groundstation_data_into_image(
             df_ground_station_previous
         )
 
-        ground_station_image_next = transform_groundstation_data_into_image(
+        mask_next, ground_station_image_next = transform_groundstation_data_into_image(
             df_ground_station_next
         )
 
         dict_return["ground_station_image_previous"] = ground_station_image_previous
         dict_return["ground_station_image_next"] = ground_station_image_next
+
+        dict_return["mask_previous"] = mask_previous
+        dict_return["mask_next"] = mask_next
 
         return dict_return
