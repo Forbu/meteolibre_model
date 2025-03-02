@@ -3,12 +3,16 @@ import polars as pl
 import numpy as np
 import h5py
 from pyproj import Transformer 
+import datetime
 
 import matplotlib.pyplot as plt
 
 # read the total.parquet file
-df = pl.read_parquet("scripts/total_float32.parquet")
+df = pl.read_parquet("/home/adrienbufort/data/total_float32.parquet")
 print(df.head())
+
+# also remove raws which have datetime < 2025-01-01 (in datetime format)
+df = df.filter(pl.col("datetime") >= datetime.datetime(2025, 1, 1))
 
 EPSG = "32630"
 
@@ -45,5 +49,9 @@ df = df.filter(
     (pl.col("position_y") <= 3472)
 )
 
+
+# replace NaN and null by -100
+df = df.fill_null(-100)
+
 # save it somewhere
-df.write_parquet("scripts/total_transformed.parquet")
+df.write_parquet("/home/adrienbufort/data/total_transformed.parquet")
