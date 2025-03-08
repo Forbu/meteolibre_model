@@ -7,10 +7,11 @@ import pytest
 import tempfile
 import datetime
 import numpy as np
-import polars as pl
 import h5py
 import torch
-from unittest.mock import patch, MagicMock
+
+import matplotlib.pyplot as plt
+
 
 from meteolibre_model.dataset import (
     MeteoLibreDataset,
@@ -75,18 +76,33 @@ def test_getitem(index_file, dir_index, groundstations_info, groundheight_info):
         "ground_height_image",
     ]
 
-    import matplotlib.pyplot as plt
 
     for key in keys_toplot:
         plt.figure()
-        
+
         array = item[key]
 
         if "mask" not in key:
             array[array == array.max()] = 0
+            
+            # print number of non zero element
+
+            
         else:
             array = array[:,:, 0]
-
+            
+            array = np.int8(array)
+            
+            # we want to extand the point with 1 value (with convolution)
+            # import numpy as np
+            from scipy.signal import convolve2d
+            array = convolve2d(array, np.ones((3,3)), mode='same')
+            array = convolve2d(array, np.ones((3,3)), mode='same')
+            array = convolve2d(array, np.ones((3,3)), mode='same')
+            array = convolve2d(array, np.ones((3,3)), mode='same')
+            
+            # clip to 1
+            array = np.clip(array, 0, 1)
 
         plt.imshow(array)
         plt.title(key)
@@ -96,12 +112,12 @@ def test_getitem(index_file, dir_index, groundstations_info, groundheight_info):
 
     exit()
 
-    # becnhmark the speed to get the item
-    start_time = datetime.datetime.now()
-    for _ in range(10):
-        item = dataset[_]
-    end_time = datetime.datetime.now()
-    print(f"Time to get 10 items: {end_time - start_time}")
+    # # becnhmark the speed to get the item
+    # start_time = datetime.datetime.now()
+    # for _ in range(10):
+    #     item = dataset[_]
+    # end_time = datetime.datetime.now()
+    # print(f"Time to get 10 items: {end_time - start_time}")
 
     # Check if the item has the expected keys
     assert "back_0" in item

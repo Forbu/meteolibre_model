@@ -49,7 +49,7 @@ def transform_groundstation_data_into_image(df):
     )
     measurements = df[columns_measurements].values
 
-    image_result[lat, lon, :] = torch.tensor(measurements)
+    image_result[lon, lat, :] = torch.tensor(measurements)
     mask = image_result != -100
 
     return mask, image_result
@@ -88,9 +88,9 @@ class MeteoLibreDataset(Dataset.Dataset):
 
         # manage gorund height image (read the .npy file)
         self.ground_height_image = np.load(ground_height_image)
-        
+
         print(self.ground_height_image.shape)
-        
+
     def __len__(self):
         return len(self.index) - self.nb_back_steps - self.nb_future_steps
 
@@ -102,16 +102,22 @@ class MeteoLibreDataset(Dataset.Dataset):
             path_file = os.path.join(
                 self.dir_index, str(self.index["file_path_h5"].iloc[index - back - 1])
             )
-            dict_return["back_" + str(back)] = np.array(
-                h5py.File(path_file, "r")["dataset1"]["data1"]["data"]
-            )
+
+            array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
+            array[array == array.max()] = 0
+
+            dict_return["back_" + str(back)] = array
+
         for future in range(self.nb_future_steps):
             path_file = os.path.join(
                 self.dir_index, str(self.index["file_path_h5"].iloc[index + future])
             )
-            dict_return["future_" + str(future)] = np.array(
-                h5py.File(path_file, "r")["dataset1"]["data1"]["data"]
-            )
+
+            array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
+            array[array == array.max()] = 0
+
+            dict_return["future_" + str(future)] = array
+
         current_date = self.index["datetime"].iloc[index]
 
         if current_date.minute != 0:
@@ -145,8 +151,8 @@ class MeteoLibreDataset(Dataset.Dataset):
         dict_return["mask_previous"] = mask_previous
         dict_return["mask_next"] = mask_next
         dict_return["hour"] = current_date.hour
-        
+
         # dd ground height image
         dict_return["ground_height_image"] = self.ground_height_image
-        
+
         return dict_return
