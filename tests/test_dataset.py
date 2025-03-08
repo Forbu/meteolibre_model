@@ -12,28 +12,41 @@ import h5py
 import torch
 from unittest.mock import patch, MagicMock
 
-from meteolibre_model.dataset import MeteoLibreDataset, transform_groundstation_data_into_image
+from meteolibre_model.dataset import (
+    MeteoLibreDataset,
+    transform_groundstation_data_into_image,
+)
 
-
-@pytest.fixture
-def index_file():
-    """Create test fixtures for each test"""
-    # Create a temporary directory for test files
-    return "/home/adrienbufort/data/index.parquet"
 
 @pytest.fixture
 def dir_index():
     """Create test fixtures for each test"""
     # Create a temporary directory for test files
-    return "/home/adrienbufort/data"
+    return "/home/adrienbufort/meteolibre_dataset/data"
+
 
 @pytest.fixture
-def groundstations_info():
+def index_file(dir_index):
     """Create test fixtures for each test"""
     # Create a temporary directory for test files
-    return "/home/adrienbufort/meteolibre_model/scripts/total_transformed.parquet"
+    return os.path.join(dir_index, "index.parquet")
 
-def test_getitem(index_file, dir_index, groundstations_info):
+
+@pytest.fixture
+def groundstations_info(dir_index):
+    """Create test fixtures for each test"""
+    # Create a temporary directory for test files
+    return os.path.join(dir_index, "groundstations_filter/total_transformed.parquet")
+
+
+@pytest.fixture
+def groundheight_info(dir_index):
+    """Create test fixtures for each test"""
+    # Create a temporary directory for test files
+    return os.path.join(dir_index, "assets/reprojected_gebco_32630_500m_padded.npy")
+
+
+def test_getitem(index_file, dir_index, groundstations_info, groundheight_info):
     """Test __getitem__ method"""
     # Setup mock for h5py.File to return a dict-like object with a 'data' key
 
@@ -41,13 +54,48 @@ def test_getitem(index_file, dir_index, groundstations_info):
         index_file=index_file,
         dir_index=dir_index,
         groundstations_info=groundstations_info,
+        ground_height_image=groundheight_info,
         nb_back_steps=2,
-        nb_future_steps=1
+        nb_future_steps=1,
     )
-    
+
     # Get an item
-    item = dataset[2000]
-    
+    item = dataset[5000]
+
+    print(item.keys())
+
+    keys_toplot = [
+        "back_0",
+        "back_1",
+        "future_0",
+        # "ground_station_image_previous",
+        # "ground_station_image_next",
+        "mask_previous",
+        "mask_next",
+        "ground_height_image",
+    ]
+
+    import matplotlib.pyplot as plt
+
+    for key in keys_toplot:
+        plt.figure()
+        
+        array = item[key]
+
+        if "mask" not in key:
+            array[array == array.max()] = 0
+        else:
+            array = array[:,:, 0]
+
+
+        plt.imshow(array)
+        plt.title(key)
+        plt.colorbar()
+
+        plt.savefig(f"/home/adrienbufort/meteolibre_model/tests/{key}.png")
+
+    exit()
+
     # becnhmark the speed to get the item
     start_time = datetime.datetime.now()
     for _ in range(10):
@@ -56,9 +104,8 @@ def test_getitem(index_file, dir_index, groundstations_info):
     print(f"Time to get 10 items: {end_time - start_time}")
 
     # Check if the item has the expected keys
-    assert 'back_0' in item
-    assert 'back_1' in item
-    assert 'future_0' in item
-    assert 'ground_station_image_previous' in item
-    assert 'ground_station_image_next' in item
-
+    assert "back_0" in item
+    assert "back_1" in item
+    assert "future_0" in item
+    assert "ground_station_image_previous" in item
+    assert "ground_station_image_next" in item
