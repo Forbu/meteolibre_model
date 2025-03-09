@@ -27,6 +27,7 @@ class MeteoLibrePLModel(pl.LightningModule):
         nb_back=3,
         nb_future=1,
         nb_hidden=16,
+        scale_factor_reduction=2,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -41,7 +42,9 @@ class MeteoLibrePLModel(pl.LightningModule):
         """
         super().__init__()
         self.model = SimpleConvFilmModel(
-            2 * input_channels_ground + nb_back + nb_future, input_channels_ground + nb_future, condition_size
+            2 * input_channels_ground + nb_back + nb_future,
+            input_channels_ground + nb_future,
+            condition_size,
         )
         self.learning_rate = learning_rate
         self.criterion = nn.MSELoss(reduction="none")  # Rectified Flow uses MSE loss
@@ -59,6 +62,11 @@ class MeteoLibrePLModel(pl.LightningModule):
         # batchnorm
         self.batchnorm_radar = torch.nn.BatchNorm2d(
             input_channels_ground, momentum=None
+        )
+
+        self.scale_factor_reduction = scale_factor_reduction
+        self.maxpool = nn.MaxPool2d(
+            kernel_size=scale_factor_reduction, stride=scale_factor_reduction
         )
 
     def forward(self, x_image, x_scalar):
@@ -140,9 +148,24 @@ class MeteoLibrePLModel(pl.LightningModule):
             [x_ground_station_image_future, x_image_future.unsqueeze(3)], dim=-1
         )
 
-
         # Concatenate all back images along the channel dimension
         x_image_back = torch.stack(img_batck_list, dim=-1)  # (B, H, W, C*nb_back)
+
+        (
+            x_image_future,
+            x_image_back,
+            x_ground_station_image_previous,
+            x_ground_station_image_future,
+            mask_future,
+            mask_previous,
+        ) = self.pooling_operation(
+            x_image_future,
+            x_image_back,
+            x_ground_station_image_previous,
+            x_ground_station_image_future,
+            mask_future,
+            mask_previous,
+        )
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
         prior_image = torch.randn_like(x_image_future)
@@ -156,7 +179,9 @@ class MeteoLibrePLModel(pl.LightningModule):
         x_t = t * x_image_future + (1 - t) * prior_image
 
         # concat x_t with x_image_back and x_ground_station_image_previous
-        input_model = torch.cat([x_t, x_image_back, x_ground_station_image_previous], dim=-1)
+        input_model = torch.cat(
+            [x_t, x_image_back, x_ground_station_image_previous], dim=-1
+        )
 
         # Predict velocity field v_t using the model
         v_t_predicted = self.forward(input_model, x_scalar)
@@ -190,3 +215,40 @@ class MeteoLibrePLModel(pl.LightningModule):
         """
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
+
+    def pooling_operation(
+        self,
+        x_image_future,
+        x_image_back,
+        x_ground_station_image_previous,
+        x_ground_station_image_future,
+        mask_future,
+        mask_previous,
+    ):
+        # Apply max pooling to image inputs and masks
+        x_t_pooled = self.maxpool(x_image_future.permute(0, 3, 1, 2)).permute(
+            0, 2, 3, 1
+        )  # (B, H/scale, W/scale, C+1)
+        x_image_back_pooled = self.maxpool(x_image_back.permute(0, 3, 1, 2)).permute(
+            0, 2, 3, 1
+        )  # (B, H/scale, W/scale, C*nb_back)
+        x_ground_station_image_previous_pooled = self.maxpool(
+            x_ground_station_image_previous.permute(0, 3, 1, 2)
+        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
+        x_ground_station_image_future_pooled = self.maxpool(
+            x_ground_station_image_future.permute(0, 3, 1, 2)
+        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
+        mask_future_pooled = self.maxpool(
+            mask_future.permute(0, 3, 1, 2).float()
+        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
+        mask_previous_pooled = self.maxpool(
+            mask_previous.permute(0, 3, 1, 2).float()
+        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
+        return (
+            x_t_pooled,
+            x_image_back_pooled,
+            x_ground_station_image_previous_pooled,
+            x_ground_station_image_future_pooled,
+            mask_future_pooled,
+            mask_previous_pooled,
+        )

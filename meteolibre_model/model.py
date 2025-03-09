@@ -74,7 +74,7 @@ class SimpleConvFilmModel(nn.Module):
         out = self.relu2(out)
         out = self.conv3(out)
 
-        x_image = x_image.permute(0, 2, 3, 1)
+        out = out.permute(0, 2, 3, 1)
 
         return out
 

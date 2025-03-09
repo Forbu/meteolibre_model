@@ -14,6 +14,8 @@ import h5py
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+RADAR_NORMALIZATION = 60.
+
 columns_measurements = [
     "RR1",
     "FF",
@@ -113,7 +115,7 @@ class MeteoLibreDataset(Dataset.Dataset):
             array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
             array[array == array.max()] = 0
 
-            array = np.float32(array)
+            array = np.float32(array) / RADAR_NORMALIZATION # normalization
 
             dict_return["back_" + str(back)] = array
 
@@ -125,7 +127,7 @@ class MeteoLibreDataset(Dataset.Dataset):
             array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
             array[array == array.max()] = 0
 
-            array = np.float32(array)
+            array = np.float32(array) / RADAR_NORMALIZATION # normalization
 
             dict_return["future_" + str(future)] = array
 
