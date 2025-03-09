@@ -47,9 +47,10 @@ def transform_groundstation_data_into_image(df):
     image_result = (
         torch.ones((3472, 3472, nb_channels), dtype=torch.float32, device=DEVICE) * -100
     )
+
     measurements = df[columns_measurements].values
 
-    image_result[lon, lat, :] = torch.tensor(measurements)
+    image_result[lon, lat, :] = torch.tensor(measurements, device=DEVICE)
     mask = image_result != -100
 
     return mask, image_result
@@ -81,6 +82,12 @@ class MeteoLibreDataset(Dataset.Dataset):
 
         print(self.groundstations_info_df.head())
 
+        # apply a normalization for each element in col_leasurement
+        self.groundstations_info_df[columns_measurements] = (
+            self.groundstations_info_df[columns_measurements]
+            - self.groundstations_info_df[columns_measurements].mean()
+        ) / self.groundstations_info_df[columns_measurements].std()
+
         self.groundstations_info_df = self.groundstations_info_df.fillna(-100)
 
         self.nb_back_steps = nb_back_steps
@@ -106,6 +113,8 @@ class MeteoLibreDataset(Dataset.Dataset):
             array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
             array[array == array.max()] = 0
 
+            array = np.float32(array)
+
             dict_return["back_" + str(back)] = array
 
         for future in range(self.nb_future_steps):
@@ -115,6 +124,8 @@ class MeteoLibreDataset(Dataset.Dataset):
 
             array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
             array[array == array.max()] = 0
+
+            array = np.float32(array)
 
             dict_return["future_" + str(future)] = array
 
@@ -134,10 +145,14 @@ class MeteoLibreDataset(Dataset.Dataset):
 
         round_date_next = round_date_previous + datetime.timedelta(hours=1)
 
-        df_ground_station_previous = self.groundstations_info_df.loc[
-            round_date_previous
-        ]
-        df_ground_station_next = self.groundstations_info_df.loc[round_date_next]
+        try:
+            df_ground_station_previous = self.groundstations_info_df.loc[
+                round_date_previous
+            ]
+            df_ground_station_next = self.groundstations_info_df.loc[round_date_next]
+        except:
+            print("bad indexing")
+            return self.__getitem__((index + 1) % self.__len__())
 
         mask_previous, ground_station_image_previous = (
             transform_groundstation_data_into_image(df_ground_station_previous)
@@ -148,11 +163,16 @@ class MeteoLibreDataset(Dataset.Dataset):
 
         dict_return["ground_station_image_previous"] = ground_station_image_previous
         dict_return["ground_station_image_next"] = ground_station_image_next
-        dict_return["mask_previous"] = mask_previous
-        dict_return["mask_next"] = mask_next
-        dict_return["hour"] = current_date.hour
+        dict_return["mask_previous"] = mask_previous.long()
+        dict_return["mask_next"] = mask_next.long()
+        dict_return["hour"] = np.int32(current_date.hour)
 
         # dd ground height image
-        dict_return["ground_height_image"] = self.ground_height_image
+        dict_return["ground_height_image"] = np.int32(
+            (self.ground_height_image - np.mean(self.ground_height_image))
+            / np.std(self.ground_height_image)
+        )
+
+        print(dict_return.keys())
 
         return dict_return

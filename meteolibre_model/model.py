@@ -58,12 +58,14 @@ class SimpleConvFilmModel(nn.Module):
     def forward(self, x_image, x_scalar):
         """
         Args:
-            x_image (torch.Tensor): Input image tensor (B, C_in, H, W).
+            x_image (torch.Tensor): Input image tensor (B, H, W, C_in).
             x_scalar (torch.Tensor): Scalar input tensor (B, condition_size).
 
         Returns:
-            torch.Tensor: Output image tensor (B, C_out, H, W).
+            torch.Tensor: Output image tensor (B, H, W, C_out).
         """
+        x_image = x_image.permute(0, 3, 1, 2)
+
         out = self.conv1(x_image)
         out = self.film1(out, x_scalar)
         out = self.relu1(out)
@@ -71,5 +73,8 @@ class SimpleConvFilmModel(nn.Module):
         out = self.film2(out, x_scalar)
         out = self.relu2(out)
         out = self.conv3(out)
+
+        x_image = x_image.permute(0, 2, 3, 1)
+
         return out
 
