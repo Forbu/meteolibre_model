@@ -9,6 +9,7 @@ from meteolibre_model.model import SimpleConvFilmModel
 from meteolibre_model.dataset import MeteoLibreDataset
 from torch.utils.data import DataLoader
 
+import matplotlib.pyplot as plt
 
 class MeteoLibrePLModel(pl.LightningModule):
     """
@@ -84,43 +85,26 @@ class MeteoLibrePLModel(pl.LightningModule):
         """
         return self.model(x_image, x_scalar)
 
-    def training_step(self, batch, batch_idx):
+    def preprocess_batch(self, batch):
         """
-        Training step for the PyTorch Lightning module.
-
-        This method defines the training logic for a single batch. It involves:
-        1. Preparing input tensors from the batch.
-        2. Projecting and embedding the ground station image.
-        3. Concatenating historical images.
-        4. Sampling prior noise and time variable for Rectified Flow.
-        5. Interpolating between prior and future image to get the diffused sample x_t.
-        6. Predicting the velocity field v_t.
-        7. Calculating the target velocity field.
-        8. Computing MSE loss between predicted and target velocity fields.
-        9. Masking the loss for ground station data.
-        10. Logging training loss.
+        Preprocesses a batch of data for training or evaluation.
 
         Args:
             batch (dict): A dictionary containing the training batch data,
                           expected to be returned by MeteoLibreDataset.
-            batch_idx (int): Index of the current batch.
 
-        Returns:
-            torch.Tensor: Training loss for the batch.
         """
-        # Assuming batch is a dictionary returned by MeteoLibreDataset
-        # and contains 'back_0', 'future_0', 'hour' keys
-
+        
         img_batck_list = []
 
         for i in range(self.nb_back):
-            x_image_back = batch[f"back_{i}"].clone().detach().float()# (B, H, W, C)
+            x_image_back = batch[f"back_{i}"].clone().detach().float()  # (B, H, W, C)
             img_batck_list.append(x_image_back)
 
         mask_previous = batch["mask_previous"].clone().detach()  # (B, H, W, C)
         mask_future = batch["mask_next"].clone().detach()  # (B, H, W, C)
 
-        x_image_future = batch["future_0"].clone().detach().float() # (B, H, W, C)
+        x_image_future = batch["future_0"].clone().detach().float()  # (B, H, W, C)
 
         x_hour = batch["hour"].clone().detach().float().unsqueeze(1)  # (B, 1)
         x_minute = batch["minute"].clone().detach().float().unsqueeze(1)  # (B, 1)
@@ -164,6 +148,55 @@ class MeteoLibrePLModel(pl.LightningModule):
             x_ground_station_image_future,
             mask_future,
             mask_previous,
+        )
+
+        return (
+            x_image_future,
+            x_image_back,
+            x_ground_station_image_previous,
+            x_ground_station_image_future,
+            x_scalar,
+            mask_future,
+            mask_previous,
+        )
+
+    def training_step(self, batch, batch_idx):
+        """
+        Training step for the PyTorch Lightning module.
+
+        This method defines the training logic for a single batch. It involves:
+        1. Preparing input tensors from the batch.
+        2. Projecting and embedding the ground station image.
+        3. Concatenating historical images.
+        4. Sampling prior noise and time variable for Rectified Flow.
+        5. Interpolating between prior and future image to get the diffused sample x_t.
+        6. Predicting the velocity field v_t.
+        7. Calculating the target velocity field.
+        8. Computing MSE loss between predicted and target velocity fields.
+        9. Masking the loss for ground station data.
+        10. Logging training loss.
+
+        Args:
+            batch (dict): A dictionary containing the training batch data,
+                          expected to be returned by MeteoLibreDataset.
+            batch_idx (int): Index of the current batch.
+
+        Returns:
+            torch.Tensor: Training loss for the batch.
+        """
+        # Assuming batch is a dictionary returned by MeteoLibreDataset
+        # and contains 'back_0', 'future_0', 'hour' keys
+
+        (
+            x_image_future,
+            x_image_back,
+            x_ground_station_image_previous,
+            _,
+            x_scalar,
+            mask_future,
+            _,
+        ) = self.preprocess_batch(
+            batch
         )
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
@@ -212,14 +245,77 @@ class MeteoLibrePLModel(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         return optimizer
 
+    @torch.no_grad()
     def generate_one(self, batch, nb_batch=1, nb_step=100):
         # Assuming batch is a dictionary returned by MeteoLibreDataset
         # we first generate a random noise
-        noise = torch.randn(nb_batch, 1, 1, 1).type_as(batch["future_0"])
+        tmp_noise = torch.randn(
+            nb_batch,
+            self.shape_image,
+            self.shape_image,
+            self.input_channels_ground + self.nb_future,
+        ).type_as(batch["future_0"])
 
+        (
+            x_image_future,
+            x_image_back,
+            x_ground_station_image_previous,
+            _,
+            x_scalar,
+            mask_future,
+            _,
+        ) = self.preprocess_batch(
+            batch
+        )
+
+        for i in range(nb_step-1):
+
+            # concat x_t with x_image_back and x_ground_station_image_previous
+            input_model = torch.cat(
+                [tmp_noise, x_image_back, x_ground_station_image_previous], dim=-1
+            )
+
+            velocity = self.forward(
+                input_model, x_scalar
+            )
+
+            # addinf the velocity to the noise
+            tmp_noise = tmp_noise + 1./ nb_step * velocity
+
+        return tmp_noise
+
+    # on epoch end of training
+    def training_epoch_end(self):
+        # generate image
+        if self.current_epoch % 10 == 0:
+            result = self.generate_one(self.train_dataloader().dataset.batch, nb_batch=1, nb_step=100)
+
+            # now we look the first on last images (result)
+            temperature_image = result[:, :, :, 0]
+            radar_image = result[:, :, :, -1]
+
+            # save the two image in png format
+            temperature_image = temperature_image.cpu().numpy()
+            radar_image = radar_image.cpu().numpy()
+
+            # save the two image in png format
+            temperature_image = temperature_image[0]
+            radar_image = radar_image[0]
+
+            # save the two image in png format
+            plt.imsave(
+                f"/home/adrienbufort/data/temperature_epoch_{self.current_epoch}.png",
+                temperature_image,
+                cmap="viridis",
+            )
+            plt.imsave(
+                f"/home/adrienbufort/data/radar_epoch_{self.current_epoch}.png",
+                radar_image,
+                cmap="viridis",
+            )
 
     def pooling_operation(
         self,
