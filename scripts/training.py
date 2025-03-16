@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     model = MeteoLibrePLModel(
         input_channels_ground=len(columns_measurements),
-        condition_size=1,
+        condition_size=2,
     )
 
     logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")

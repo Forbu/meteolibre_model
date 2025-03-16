@@ -28,6 +28,7 @@ class MeteoLibrePLModel(pl.LightningModule):
         nb_future=1,
         nb_hidden=16,
         scale_factor_reduction=2,
+        shape_image=3472,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -53,6 +54,7 @@ class MeteoLibrePLModel(pl.LightningModule):
         self.nb_future = nb_future
         self.hidden_size = nb_hidden
         self.input_channels_ground = input_channels_ground
+        self.shape_image = shape_image
 
         # embedding for non know value (radar)
         self.embedding_non_know_ground_station = nn.Parameter(
@@ -118,12 +120,13 @@ class MeteoLibrePLModel(pl.LightningModule):
         mask_previous = batch["mask_previous"].clone().detach()  # (B, H, W, C)
         mask_future = batch["mask_next"].clone().detach()  # (B, H, W, C)
 
-        x_image_future = batch["future_0"].clone().detach().float() # (B, C, H, W)
+        x_image_future = batch["future_0"].clone().detach().float() # (B, H, W, C)
 
         x_hour = batch["hour"].clone().detach().float().unsqueeze(1)  # (B, 1)
+        x_minute = batch["minute"].clone().detach().float().unsqueeze(1)  # (B, 1)
 
-        # Simple scalar condition: hour of the day. You might want to expand this.
-        x_scalar = x_hour / 24.0  # Normalize hour to [0, 1]
+        # Simple scalar condition: hour of the day and minutes of the day. You might want to expand this.
+        x_scalar = torch.cat([x_hour, x_minute], dim=1)
 
         # we project the groundstation (ground_station_image_previous) to hidden dimension
         x_ground_station_image_previous = batch[
@@ -212,8 +215,10 @@ class MeteoLibrePLModel(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
 
-    def generate_one(self, batch, nb_batch=1):
-        
+    def generate_one(self, batch, nb_batch=1, nb_step=100):
+        # Assuming batch is a dictionary returned by MeteoLibreDataset
+        # we first generate a random noise
+        noise = torch.randn(nb_batch, 1, 1, 1).type_as(batch["future_0"])
 
 
     def pooling_operation(

@@ -69,6 +69,9 @@ class MeteoLibreDataset(Dataset.Dataset):
     ):
         self.index = pd.read_parquet(index_file)
 
+        # set datetime as index
+        self.index = self.index.set_index("datetime")
+
         self.dir_index = dir_index
 
         self.groundstations_info = groundstations_info
@@ -77,7 +80,6 @@ class MeteoLibreDataset(Dataset.Dataset):
         self.groundstations_info_df = self.groundstations_info_df[
             columns_measurements + columns_positions + ["datetime"]
         ]
-        
 
         print(self.groundstations_info_df["datetime"])
 
@@ -108,6 +110,9 @@ class MeteoLibreDataset(Dataset.Dataset):
 
     def __getitem__(self, index):
         index = int(index + self.nb_back_steps)
+        
+        current_date = self.index.index[index]
+
         dict_return = {}
 
         for back in range(self.nb_back_steps):
@@ -115,12 +120,25 @@ class MeteoLibreDataset(Dataset.Dataset):
                 self.dir_index, str(self.index["file_path_h5"].iloc[index - back - 1])
             )
 
-            array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
-            array[array == array.max()] = 0
+            # check if the delta with the current time is not too high
+            time_back = self.index.index[index - back - 1]
+            delta_time = current_date - time_back
+
+            # convert delta time in minutes
+            delta_time_minutes = delta_time.total_seconds() / 60
+
+            if delta_time <= datetime.timedelta(hours=2):
+                array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
+                array[array == 65535] = -60
+            else:
+                print("bad delta time", delta_time)
+                array = np.ones((3472, 3472), dtype=np.float32) * -60    
 
             array = np.float32(array) / RADAR_NORMALIZATION # normalization
 
             dict_return["back_" + str(back)] = array
+            dict_return["mask_back_" + str(back)] = array != -60 / RADAR_NORMALIZATION
+            dict_return["time_back_" + str(back)] = delta_time_minutes / 60.
 
         for future in range(self.nb_future_steps):
             path_file = os.path.join(
@@ -128,13 +146,11 @@ class MeteoLibreDataset(Dataset.Dataset):
             )
 
             array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
-            array[array == array.max()] = 0
+            array[array == 65535] = -60
 
             array = np.float32(array) / RADAR_NORMALIZATION # normalization
 
             dict_return["future_" + str(future)] = array
-
-        current_date = self.index["datetime"].iloc[index]
 
         if current_date.minute != 0:
             round_date_previous = datetime.datetime(
@@ -173,7 +189,8 @@ class MeteoLibreDataset(Dataset.Dataset):
         dict_return["ground_station_image_next"] = ground_station_image_next
         dict_return["mask_previous"] = mask_previous.long()
         dict_return["mask_next"] = mask_next.long()
-        dict_return["hour"] = np.int32(current_date.hour)
+        dict_return["hour"] = np.int32(current_date.hour) / 24.
+        dict_return["minute"] = np.int32(current_date.minute)/30.
 
         # dd ground height image
         dict_return["ground_height_image"] = np.int32(
