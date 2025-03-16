@@ -40,7 +40,6 @@ columns_measurements = [
 
 columns_positions = ["position_x", "position_y"]
 
-
 def transform_groundstation_data_into_image(df):
     lat = torch.tensor(df["position_x"].values, dtype=torch.int64, device=DEVICE)
     lon = torch.tensor(df["position_y"].values, dtype=torch.int64, device=DEVICE)
@@ -78,9 +77,13 @@ class MeteoLibreDataset(Dataset.Dataset):
         self.groundstations_info_df = self.groundstations_info_df[
             columns_measurements + columns_positions + ["datetime"]
         ]
+        
+
+        print(self.groundstations_info_df["datetime"])
 
         # set index to datetime
         self.groundstations_info_df = self.groundstations_info_df.set_index("datetime")
+
 
         print(self.groundstations_info_df.head())
 
@@ -147,6 +150,9 @@ class MeteoLibreDataset(Dataset.Dataset):
 
         round_date_next = round_date_previous + datetime.timedelta(hours=1)
 
+        print("round_date_previous ", round_date_previous)
+        print("round_date_next ", round_date_next)
+
         try:
             df_ground_station_previous = self.groundstations_info_df.loc[
                 round_date_previous
@@ -175,6 +181,6 @@ class MeteoLibreDataset(Dataset.Dataset):
             / np.std(self.ground_height_image)
         )
 
-        print(dict_return.keys())
+        #print(dict_return.keys())
 
         return dict_return

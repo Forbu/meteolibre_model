@@ -112,19 +112,15 @@ class MeteoLibrePLModel(pl.LightningModule):
         img_batck_list = []
 
         for i in range(self.nb_back):
-            x_image_back = torch.tensor(
-                batch[f"back_{i}"], dtype=torch.float32
-            )  # (B, H, W, C)
+            x_image_back = batch[f"back_{i}"].clone().detach().float()# (B, H, W, C)
             img_batck_list.append(x_image_back)
 
-        mask_previous = batch["mask_previous"]  # (B, H, W, C)
-        mask_future = batch["mask_next"]  # (B, H, W, C)
+        mask_previous = batch["mask_previous"].clone().detach()  # (B, H, W, C)
+        mask_future = batch["mask_next"].clone().detach()  # (B, H, W, C)
 
-        x_image_future = torch.tensor(
-            batch["future_0"], dtype=torch.float32
-        )  # (B, C, H, W)
+        x_image_future = batch["future_0"].clone().detach().float() # (B, C, H, W)
 
-        x_hour = torch.tensor(batch["hour"], dtype=torch.float32).unsqueeze(1)  # (B, 1)
+        x_hour = batch["hour"].clone().detach().float().unsqueeze(1)  # (B, 1)
 
         # Simple scalar condition: hour of the day. You might want to expand this.
         x_scalar = x_hour / 24.0  # Normalize hour to [0, 1]
@@ -215,6 +211,10 @@ class MeteoLibrePLModel(pl.LightningModule):
         """
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
+
+    def generate_one(self, batch, nb_batch=1):
+        
+
 
     def pooling_operation(
         self,
