@@ -30,6 +30,8 @@ class MeteoLibrePLModel(pl.LightningModule):
         nb_hidden=16,
         scale_factor_reduction=2,
         shape_image=3472,
+        test_dataloader=None,
+        dir_save="../",
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -50,6 +52,10 @@ class MeteoLibrePLModel(pl.LightningModule):
         )
         self.learning_rate = learning_rate
         self.criterion = nn.MSELoss(reduction="none")  # Rectified Flow uses MSE loss
+
+        self.test_dataloader = test_dataloader
+
+        self.dir_save = dir_save
 
         self.nb_back = nb_back
         self.nb_future = nb_future
@@ -249,15 +255,14 @@ class MeteoLibrePLModel(pl.LightningModule):
         return optimizer
 
     @torch.no_grad()
-    def generate_one(self, batch, nb_batch=1, nb_step=100):
+    def generate_one(self, nb_batch=1, nb_step=100):
         # Assuming batch is a dictionary returned by MeteoLibreDataset
         # we first generate a random noise
-        tmp_noise = torch.randn(
-            nb_batch,
-            self.shape_image,
-            self.shape_image,
-            self.input_channels_ground + self.nb_future,
-        ).type_as(batch["future_0"])
+        for batch in self.test_dataloader:
+            break
+
+        # convert to device
+        batch = {k: v.to(self.device) for k, v in batch.items()}
 
         (
             x_image_future,
@@ -270,6 +275,8 @@ class MeteoLibrePLModel(pl.LightningModule):
         ) = self.preprocess_batch(
             batch
         )
+
+        tmp_noise = torch.randn_like(x_image_future).to(self.device)
 
         for i in range(nb_step-1):
 
@@ -288,10 +295,10 @@ class MeteoLibrePLModel(pl.LightningModule):
         return tmp_noise
 
     # on epoch end of training
-    def training_epoch_end(self):
+    def on_train_epoch_end(self):
         # generate image
         if self.current_epoch % 10 == 0:
-            result = self.generate_one(self.train_dataloader().dataset.batch, nb_batch=1, nb_step=100)
+            result = self.generate_one(nb_batch=1, nb_step=100)
 
             # now we look the first on last images (result)
             temperature_image = result[:, :, :, 0]
@@ -307,12 +314,12 @@ class MeteoLibrePLModel(pl.LightningModule):
 
             # save the two image in png format
             plt.imsave(
-                f"/home/adrienbufort/data/temperature_epoch_{self.current_epoch}.png",
+                self.dir_save + f"data/temperature_epoch_{self.current_epoch}.png",
                 temperature_image,
                 cmap="viridis",
             )
             plt.imsave(
-                f"/home/adrienbufort/data/radar_epoch_{self.current_epoch}.png",
+                self.dir_save + f"data/radar_epoch_{self.current_epoch}.png",
                 radar_image,
                 cmap="viridis",
             )

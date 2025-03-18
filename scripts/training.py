@@ -12,7 +12,7 @@ from meteolibre_model.dataset import (
 from meteolibre_model.pl_model import MeteoLibrePLModel
 
 import lightning.pytorch as pl
-from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 
 import torch
 import torch.nn as nn
@@ -58,16 +58,17 @@ if __name__ == "__main__":
     model = MeteoLibrePLModel(
         input_channels_ground=len(columns_measurements),
         condition_size=2,
+        test_dataloader=val_dataloader,
     )
 
-    logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
-    # logger = WandbLogger(project="g2pt_grid")
+    # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
+    logger = WandbLogger(name="meteolibre_model", project="meteolibre_model")
 
     trainer = pl.Trainer(
         max_time={"hours": 3},
         logger=logger,
-        accumulate_grad_batches=16,
-        # fast_dev_run=True,
+        accumulate_grad_batches=8,
+        fast_dev_run=True,
         # accelerator="cpu", # debug
         gradient_clip_val=1.0,
     )  # fast_dev_run=True for quick debugging

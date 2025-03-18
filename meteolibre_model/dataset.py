@@ -129,6 +129,7 @@ class MeteoLibreDataset(Dataset.Dataset):
 
             if delta_time <= datetime.timedelta(hours=2):
                 array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
+                array = array.astype(np.int32)
                 array[array == 65535] = -60
             else:
                 print("bad delta time", delta_time)
@@ -137,7 +138,7 @@ class MeteoLibreDataset(Dataset.Dataset):
             array = np.float32(array) / RADAR_NORMALIZATION # normalization
 
             dict_return["back_" + str(back)] = array
-            dict_return["mask_back_" + str(back)] = array != -60 / RADAR_NORMALIZATION
+            dict_return["mask_back_" + str(back)] = array != (-60 / RADAR_NORMALIZATION)
             dict_return["time_back_" + str(back)] = delta_time_minutes / 60.
 
         for future in range(self.nb_future_steps):
@@ -146,6 +147,8 @@ class MeteoLibreDataset(Dataset.Dataset):
             )
 
             array = np.array(h5py.File(path_file, "r")["dataset1"]["data1"]["data"])
+            array = array.astype(np.int32)
+
             array[array == 65535] = -60
 
             array = np.float32(array) / RADAR_NORMALIZATION # normalization
