@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
     val_dataloader = DataLoader(
-        val_dataset, batch_size=1
+        val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
 
     model = MeteoLibrePLModel(
@@ -68,9 +68,10 @@ if __name__ == "__main__":
         max_time={"hours": 3},
         logger=logger,
         accumulate_grad_batches=8,
-        fast_dev_run=True,
+        #fast_dev_run=True,
         # accelerator="cpu", # debug
         gradient_clip_val=1.0,
+        log_every_n_steps=5,
     )  # fast_dev_run=True for quick debugging
 
     trainer.fit(

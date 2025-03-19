@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 import matplotlib.pyplot as plt
 
+
 class MeteoLibrePLModel(pl.LightningModule):
     """
     PyTorch Lightning module for the MeteoLibre model.
@@ -24,7 +25,7 @@ class MeteoLibrePLModel(pl.LightningModule):
         self,
         input_channels_ground,
         condition_size,
-        learning_rate=1e-3,
+        learning_rate=1e-2,
         nb_back=3,
         nb_future=1,
         nb_hidden=16,
@@ -100,7 +101,7 @@ class MeteoLibrePLModel(pl.LightningModule):
                           expected to be returned by MeteoLibreDataset.
 
         """
-        
+
         img_batck_list = []
 
         for i in range(self.nb_back):
@@ -201,9 +202,7 @@ class MeteoLibrePLModel(pl.LightningModule):
             x_scalar,
             mask_future,
             _,
-        ) = self.preprocess_batch(
-            batch
-        )
+        ) = self.preprocess_batch(batch)
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
         prior_image = torch.randn_like(x_image_future)
@@ -272,57 +271,60 @@ class MeteoLibrePLModel(pl.LightningModule):
             x_scalar,
             mask_future,
             _,
-        ) = self.preprocess_batch(
-            batch
-        )
+        ) = self.preprocess_batch(batch)
 
         tmp_noise = torch.randn_like(x_image_future).to(self.device)
 
-        for i in range(nb_step-1):
-
+        for i in range(nb_step - 1):
             # concat x_t with x_image_back and x_ground_station_image_previous
             input_model = torch.cat(
                 [tmp_noise, x_image_back, x_ground_station_image_previous], dim=-1
             )
 
-            velocity = self.forward(
-                input_model, x_scalar
-            )
+            velocity = self.forward(input_model, x_scalar)
 
             # addinf the velocity to the noise
-            tmp_noise = tmp_noise + 1./ nb_step * velocity
+            tmp_noise = tmp_noise + 1.0 / nb_step * velocity
 
-        return tmp_noise
+        return tmp_noise, x_image_future
 
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
-        if self.current_epoch % 10 == 0:
-            result = self.generate_one(nb_batch=1, nb_step=100)
+        self.eval()
+        result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
 
-            # now we look the first on last images (result)
-            temperature_image = result[:, :, :, 0]
-            radar_image = result[:, :, :, -1]
+        self.save_image(result, name_append="result")
+        self.save_image(x_image_future, name_append="future")
 
-            # save the two image in png format
-            temperature_image = temperature_image.cpu().numpy()
-            radar_image = radar_image.cpu().numpy()
+        self.train()
 
-            # save the two image in png format
-            temperature_image = temperature_image[0]
-            radar_image = radar_image[0]
+    def save_image(self, result, name_append="result"):
+        temperature_image = result[:, :, :, 0]
+        radar_image = result[:, :, :, -1]
 
-            # save the two image in png format
-            plt.imsave(
-                self.dir_save + f"data/temperature_epoch_{self.current_epoch}.png",
-                temperature_image,
-                cmap="viridis",
-            )
-            plt.imsave(
-                self.dir_save + f"data/radar_epoch_{self.current_epoch}.png",
-                radar_image,
-                cmap="viridis",
-            )
+        temperature_image = temperature_image.cpu().numpy()
+        radar_image = radar_image.cpu().numpy()
+
+        temperature_image = temperature_image[0]
+        radar_image = radar_image[0]
+
+        fname = self.dir_save + f"data/{name_append}_temperature_epoch_{self.current_epoch}.png"
+
+        plt.figure(figsize=(20, 20))
+        plt.imshow(temperature_image)
+        plt.colorbar()
+        plt.savefig(fname, bbox_inches="tight", pad_inches=0)
+        plt.close()
+
+        fname = self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
+
+        plt.figure(figsize=(20, 20))
+        plt.imshow(radar_image)
+        plt.colorbar()
+
+        plt.savefig(fname, bbox_inches="tight", pad_inches=0)
+        plt.close()
 
     def pooling_operation(
         self,
