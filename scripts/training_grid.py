@@ -4,15 +4,20 @@ Script for module training
 
 """
 
+from meteolibre_model.pl_model_grid import MeteoLibrePLModelGrid
+
+
+from meteolibre_model.dataset_cutting_grid import MeteoLibreDatasetPartialGrid
+
+
 from meteolibre_model.dataset import (
-    MeteoLibreDataset,
     columns_measurements,
 )
 
-from meteolibre_model.pl_model import MeteoLibrePLModel
+from meteolibre_model.pl_model_grid import MeteoLibrePLModelGrid
 
 import lightning.pytorch as pl
-from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
+from lightning.pytorch.loggers import WandbLogger
 
 import torch
 import torch.nn as nn
@@ -21,7 +26,7 @@ from torch.utils.data import DataLoader
 
 
 def init_dataset(index_file, dir_index, groundstations_info, groundheight_info):
-    dataset = MeteoLibreDataset(
+    dataset = MeteoLibreDatasetPartialGrid(
         index_file=index_file,
         dir_index=dir_index,
         groundstations_info=groundstations_info,
@@ -50,16 +55,16 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
 
-    model = MeteoLibrePLModel(
+    model = MeteoLibrePLModelGrid(
         input_channels_ground=len(columns_measurements),
         condition_size=2,
         test_dataloader=val_dataloader,
-        scale_factor_reduction=4,
+        scale_factor_reduction=1,
     )
 
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
@@ -69,7 +74,7 @@ if __name__ == "__main__":
         max_time={"hours": 3},
         logger=logger,
         accumulate_grad_batches=8,
-        #fast_dev_run=True,
+        # fast_dev_run=True,
         # accelerator="cpu", # debug
         gradient_clip_val=1.0,
         log_every_n_steps=5,

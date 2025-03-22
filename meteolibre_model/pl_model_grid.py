@@ -5,14 +5,14 @@ meteolibre_model/meteolibre_model/pl_model.py
 import torch
 import torch.nn as nn
 import lightning.pytorch as pl
-from meteolibre_model.model import SimpleConvFilmModel
-from meteolibre_model.dataset import MeteoLibreDataset
+from meteolibre_model.model_unet import UnetFilmModel
+from meteolibre_model.dataset_cutting_grid import MeteoLibreDatasetPartialGrid
 from torch.utils.data import DataLoader
 
 import matplotlib.pyplot as plt
 
 
-class MeteoLibrePLModel(pl.LightningModule):
+class MeteoLibrePLModelGrid(pl.LightningModule):
     """
     PyTorch Lightning module for the MeteoLibre model.
 
@@ -28,9 +28,8 @@ class MeteoLibrePLModel(pl.LightningModule):
         learning_rate=1e-2,
         nb_back=3,
         nb_future=1,
-        nb_hidden=16,
-        scale_factor_reduction=2,
-        shape_image=3472,
+        scale_factor_reduction=1,
+        shape_image=512,
         test_dataloader=None,
         dir_save="../",
     ):
@@ -43,10 +42,9 @@ class MeteoLibrePLModel(pl.LightningModule):
             learning_rate (float, optional): Learning rate for the optimizer. Defaults to 1e-3.
             nb_back (int, optional): Number of past frames to use as input. Defaults to 3.
             nb_future (int, optional): Number of future frames to predict. Defaults to 1.
-            nb_hidden (int, optional): Number of hidden channels in the model. Defaults to 16.
         """
         super().__init__()
-        self.model = SimpleConvFilmModel(
+        self.model = UnetFilmModel(
             2 * input_channels_ground + nb_back + nb_future,
             input_channels_ground + nb_future,
             condition_size,
@@ -60,7 +58,6 @@ class MeteoLibrePLModel(pl.LightningModule):
 
         self.nb_back = nb_back
         self.nb_future = nb_future
-        self.hidden_size = nb_hidden
         self.input_channels_ground = input_channels_ground
         self.shape_image = shape_image
 
@@ -140,22 +137,6 @@ class MeteoLibrePLModel(pl.LightningModule):
 
         # Concatenate all back images along the channel dimension
         x_image_back = torch.stack(img_batck_list, dim=-1)  # (B, H, W, C*nb_back)
-
-        (
-            x_image_future,
-            x_image_back,
-            x_ground_station_image_previous,
-            x_ground_station_image_future,
-            mask_future,
-            mask_previous,
-        ) = self.pooling_operation(
-            x_image_future,
-            x_image_back,
-            x_ground_station_image_previous,
-            x_ground_station_image_future,
-            mask_future,
-            mask_previous,
-        )
 
         return (
             x_image_future,
@@ -337,40 +318,3 @@ class MeteoLibrePLModel(pl.LightningModule):
 
         plt.savefig(fname, bbox_inches="tight", pad_inches=0)
         plt.close()
-
-    def pooling_operation(
-        self,
-        x_image_future,
-        x_image_back,
-        x_ground_station_image_previous,
-        x_ground_station_image_future,
-        mask_future,
-        mask_previous,
-    ):
-        # Apply max pooling to image inputs and masks
-        x_t_pooled = self.maxpool(x_image_future.permute(0, 3, 1, 2)).permute(
-            0, 2, 3, 1
-        )  # (B, H/scale, W/scale, C+1)
-        x_image_back_pooled = self.maxpool(x_image_back.permute(0, 3, 1, 2)).permute(
-            0, 2, 3, 1
-        )  # (B, H/scale, W/scale, C*nb_back)
-        x_ground_station_image_previous_pooled = self.maxpool(
-            x_ground_station_image_previous.permute(0, 3, 1, 2)
-        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
-        x_ground_station_image_future_pooled = self.maxpool(
-            x_ground_station_image_future.permute(0, 3, 1, 2)
-        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
-        mask_future_pooled = self.maxpool(
-            mask_future.permute(0, 3, 1, 2).float()
-        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
-        mask_previous_pooled = self.maxpool(
-            mask_previous.permute(0, 3, 1, 2).float()
-        ).permute(0, 2, 3, 1)  # (B, H/scale, W/scale, C)
-        return (
-            x_t_pooled,
-            x_image_back_pooled,
-            x_ground_station_image_previous_pooled,
-            x_ground_station_image_future_pooled,
-            mask_future_pooled,
-            mask_previous_pooled,
-        )

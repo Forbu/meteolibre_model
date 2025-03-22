@@ -14,20 +14,29 @@ Take also scalar element (matching flow time and hour of the day) as input.
 The model is a simple CNN with some conv layers and also film layers for the scalar input.
 """
 
+import segmentation_models_pytorch as smp
 import torch.nn as nn
 
 from meteolibre_model.utils import FilmLayer
 
-class SimpleConvFilmModel(nn.Module):
-    def __init__(self, input_channels, output_channels, condition_size):
+class UnetFilmModel(nn.Module):
+    def __init__(
+        self,
+        input_channels,
+        output_channels,
+        condition_size,
+        encoder_name="mobilenet_v2",
+    ):
         super().__init__()
-        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, padding=1)
-        self.film1 = FilmLayer(32, condition_size)
-        self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.film2 = FilmLayer(64, condition_size)
-        self.relu2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(64, output_channels, kernel_size=3, padding=1)
+
+        self.model = smp.Unet(
+            encoder_name=encoder_name,  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+            in_channels=input_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+            classes=output_channels,  # model output channels (number of classes in your dataset)
+        )
+
+        self.film1 = FilmLayer(num_features=input_channels, condition_size=condition_size)
+        self.film2 = FilmLayer(output_channels, condition_size=condition_size)
 
     def forward(self, x_image, x_scalar):
         """
@@ -40,15 +49,10 @@ class SimpleConvFilmModel(nn.Module):
         """
         x_image = x_image.permute(0, 3, 1, 2)
 
-        out = self.conv1(x_image)
-        out = self.film1(out, x_scalar)
-        out = self.relu1(out)
-        out = self.conv2(out)
+        out = self.film1(x_image, x_scalar)
+        out = self.model(x_image)
         out = self.film2(out, x_scalar)
-        out = self.relu2(out)
-        out = self.conv3(out)
 
         out = out.permute(0, 2, 3, 1)
 
         return out
-
