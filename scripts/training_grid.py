@@ -10,7 +10,7 @@ from meteolibre_model.pl_model_grid import MeteoLibrePLModelGrid
 from meteolibre_model.dataset_cutting_grid import MeteoLibreDatasetPartialGrid
 
 
-from meteolibre_model.dataset import (
+from meteolibre_model.dataset_cutting_grid import (
     columns_measurements,
 )
 
@@ -25,11 +25,10 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 
-def init_dataset(index_file, dir_index, groundstations_info, groundheight_info):
+def init_dataset(index_file, dir_index, groundheight_info):
     dataset = MeteoLibreDatasetPartialGrid(
         index_file=index_file,
         dir_index=dir_index,
-        groundstations_info=groundstations_info,
         ground_height_image=groundheight_info,
         nb_back_steps=3,
         nb_future_steps=1,
@@ -41,13 +40,12 @@ def init_dataset(index_file, dir_index, groundstations_info, groundheight_info):
 if __name__ == "__main__":
     index_file = "/teamspace/studios/this_studio/data/index.parquet"
     dir_index = "/teamspace/studios/this_studio/data"
-    groundstations_info = "/teamspace/studios/this_studio/data/groundstations_filter/total_transformed.parquet"
     groundheight_info = (
         "/teamspace/studios/this_studio/data/reprojected_gebco_32630_500m_padded.npy"
     )
 
     dataset = init_dataset(
-        index_file, dir_index, groundstations_info, groundheight_info
+        index_file, dir_index, groundheight_info
     )
 
     # For simplicity, use the same dataset for training and validation.
@@ -55,13 +53,12 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
+    train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
 
     model = MeteoLibrePLModelGrid(
-        input_channels_ground=len(columns_measurements),
         condition_size=2,
         test_dataloader=val_dataloader,
         scale_factor_reduction=1,

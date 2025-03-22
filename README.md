@@ -24,3 +24,16 @@ The data is coming from two sources :
 Here is a global overview of the data :
 
 ![Data](images/data_type.png)
+
+
+## First step 
+
+1. The first element / step is to forecast the evolution of the radar image.
+
+2. Second element is to add the ground station input / output to enrich the feature space
+
+3. Adding the elevation information to improve forecast
+
+4. Adding ground clear sky irradiance
+
+4. Extend prediction to whole europe with new dataset !

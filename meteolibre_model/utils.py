@@ -25,4 +25,5 @@ class FilmLayer(nn.Module):
         gamma, beta = film_params[:, :self.num_features], film_params[:, self.num_features:]
         gamma = gamma.unsqueeze(-1).unsqueeze(-1) # (B, C, 1, 1) to match feature map dims
         beta = beta.unsqueeze(-1).unsqueeze(-1)   # (B, C, 1, 1)
+
         return gamma * x + beta

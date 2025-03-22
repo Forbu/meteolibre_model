@@ -23,7 +23,6 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
     def __init__(
         self,
-        input_channels_ground,
         condition_size,
         learning_rate=1e-2,
         nb_back=3,
@@ -45,8 +44,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
         super().__init__()
         self.model = UnetFilmModel(
-            2 * input_channels_ground + nb_back + nb_future,
-            input_channels_ground + nb_future,
+            nb_back + nb_future,
+            nb_future,
             condition_size,
         )
         self.learning_rate = learning_rate
@@ -58,18 +57,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         self.nb_back = nb_back
         self.nb_future = nb_future
-        self.input_channels_ground = input_channels_ground
+
         self.shape_image = shape_image
-
-        # embedding for non know value (radar)
-        self.embedding_non_know_ground_station = nn.Parameter(
-            torch.randn(1, 1, 1, input_channels_ground)
-        )
-
-        # batchnorm
-        self.batchnorm_radar = torch.nn.BatchNorm2d(
-            input_channels_ground, momentum=None
-        )
 
         self.scale_factor_reduction = scale_factor_reduction
         self.maxpool = nn.MaxPool2d(
@@ -105,10 +94,9 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             x_image_back = batch[f"back_{i}"].clone().detach().float()  # (B, H, W, C)
             img_batck_list.append(x_image_back)
 
-        mask_previous = batch["mask_previous"].clone().detach()  # (B, H, W, C)
-        mask_future = batch["mask_next"].clone().detach()  # (B, H, W, C)
-
-        x_image_future = batch["future_0"].clone().detach().float()  # (B, H, W, C)
+        x_image_future = (
+            batch["future_0"].clone().detach().float().unsqueeze(-1)
+        )  # (B, H, W, C)
 
         x_hour = batch["hour"].clone().detach().float().unsqueeze(1)  # (B, 1)
         x_minute = batch["minute"].clone().detach().float().unsqueeze(1)  # (B, 1)
@@ -116,36 +104,13 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # Simple scalar condition: hour of the day and minutes of the day. You might want to expand this.
         x_scalar = torch.cat([x_hour, x_minute], dim=1)
 
-        # we project the groundstation (ground_station_image_previous) to hidden dimension
-        x_ground_station_image_previous = batch[
-            "ground_station_image_previous"
-        ]  # (B, H, W, C)
-
-        x_ground_station_image_previous = (
-            x_ground_station_image_previous * mask_previous
-            + self.embedding_non_know_ground_station * (1 - mask_previous)
-        )  # (B, H, W, hidden_size)
-
-        # we project the groundstation (ground_station_image_previous) to hidden dimension
-        x_ground_station_image_future = batch[
-            "ground_station_image_next"
-        ]  # (B, H, W, C)
-
-        x_image_future = torch.cat(
-            [x_ground_station_image_future, x_image_future.unsqueeze(3)], dim=-1
-        )
-
         # Concatenate all back images along the channel dimension
         x_image_back = torch.stack(img_batck_list, dim=-1)  # (B, H, W, C*nb_back)
 
         return (
             x_image_future,
             x_image_back,
-            x_ground_station_image_previous,
-            x_ground_station_image_future,
             x_scalar,
-            mask_future,
-            mask_previous,
         )
 
     def training_step(self, batch, batch_idx):
@@ -178,11 +143,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         (
             x_image_future,
             x_image_back,
-            x_ground_station_image_previous,
-            _,
             x_scalar,
-            mask_future,
-            _,
         ) = self.preprocess_batch(batch)
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
@@ -197,34 +158,23 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_t = t * x_image_future + (1 - t) * prior_image
 
         # concat x_t with x_image_back and x_ground_station_image_previous
-        input_model = torch.cat(
-            [x_t, x_image_back, x_ground_station_image_previous], dim=-1
-        )
+        input_model = torch.cat([x_t, x_image_back], dim=-1)
 
         # Predict velocity field v_t using the model
         end_t_predicted = self.forward(input_model, x_scalar)
 
         # coefficient of ponderation for endpoint parametrization
         w_t = t / (1 - t)
-        w_t = torch.clamp(w_t, min=0.05, max=2.)
+        w_t = torch.clamp(w_t, min=0.05, max=2.0)
 
         # Loss is MSE between predicted and target velocity fields
         loss = self.criterion(end_t_predicted, x_image_future)
-        loss = w_t * loss # ponderate loss
+        loss = w_t * loss  # ponderate loss
 
-        loss_ground = (
-            loss[:, :, :, : self.input_channels_ground] * mask_future
-        ).sum() / mask_future.sum()
-
-
-        loss_radar = loss[:, :, :, [-1]].mean()
-
-        loss = loss_ground + loss_radar
+        loss = loss.mean()
 
         # Log the loss
         self.log("train_loss", loss)
-        self.log("train_loss_ground", loss_ground)
-        self.log("train_loss_radar", loss_radar)
 
         return loss
 
@@ -251,20 +201,14 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         (
             x_image_future,
             x_image_back,
-            x_ground_station_image_previous,
-            _,
             x_scalar,
-            mask_future,
-            _,
         ) = self.preprocess_batch(batch)
 
         tmp_noise = torch.randn_like(x_image_future).to(self.device)
 
         for i in range(nb_step - 1):
             # concat x_t with x_image_back and x_ground_station_image_previous
-            input_model = torch.cat(
-                [tmp_noise, x_image_back, x_ground_station_image_previous], dim=-1
-            )
+            input_model = torch.cat([tmp_noise, x_image_back], dim=-1)
 
             t = i * 1.0 / nb_step
 
@@ -290,27 +234,13 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.train()
 
     def save_image(self, result, name_append="result"):
-        temperature_image = result[:, :, :, 0]
-        radar_image = result[:, :, :, -1]
+        radar_image = result[:, :, :, -1].cpu().numpy()
 
-        temperature_image = temperature_image.cpu().numpy()
-        radar_image = radar_image.cpu().numpy()
-
-        temperature_image = temperature_image[0]
         radar_image = radar_image[0]
 
-        fname = self.dir_save + f"data/{name_append}_temperature_epoch_{self.current_epoch}.png"
-
-        plt.figure(figsize=(20, 20))
-        # limit to -1 and 2
-        plt.imshow(temperature_image)
-        plt.colorbar()
-
-
-        plt.savefig(fname, bbox_inches="tight", pad_inches=0)
-        plt.close()
-
-        fname = self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
+        fname = (
+            self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
+        )
 
         plt.figure(figsize=(20, 20))
         plt.imshow(radar_image, vmin=-1, vmax=2)
