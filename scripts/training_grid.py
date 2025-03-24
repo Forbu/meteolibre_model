@@ -53,7 +53,7 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
+    train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation

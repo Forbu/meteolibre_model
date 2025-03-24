@@ -25,7 +25,7 @@ class UnetFilmModel(nn.Module):
         input_channels,
         output_channels,
         condition_size,
-        encoder_name="mobilenet_v2",
+        encoder_name="efficientnet-b2",
     ):
         super().__init__()
 

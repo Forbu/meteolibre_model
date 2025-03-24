@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 import matplotlib.pyplot as plt
 
+import wandb
 
 class MeteoLibrePLModelGrid(pl.LightningModule):
     """
@@ -220,16 +221,17 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             # addinf the velocity to the noise
             tmp_noise = tmp_noise + 1.0 / nb_step * velocity
 
-        return tmp_noise, x_image_future
+        return tmp_noise, x_image_future, x_image_back[:, :, :, [-1]]
 
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
         self.eval()
-        result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
+        result, x_image_future, x_image_back = self.generate_one(nb_batch=1, nb_step=100)
 
         self.save_image(result, name_append="result")
         self.save_image(x_image_future, name_append="future")
+        self.save_image(x_image_back, name_append="previous")
 
         self.train()
 
@@ -248,3 +250,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         plt.savefig(fname, bbox_inches="tight", pad_inches=0)
         plt.close()
+
+        # logging image into wandb
+        self.logger.log_image(key=name_append, images=[wandb.Image(fname)], caption=[name_append])  
+        
