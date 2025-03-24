@@ -45,7 +45,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
         super().__init__()
         self.model = UnetFilmModel(
-            nb_back + nb_future,
+            nb_back + nb_future + 1,
             nb_future,
             condition_size,
         )
@@ -62,9 +62,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.shape_image = shape_image
 
         self.scale_factor_reduction = scale_factor_reduction
-        self.maxpool = nn.MaxPool2d(
-            kernel_size=scale_factor_reduction, stride=scale_factor_reduction
-        )
+
 
     def forward(self, x_image, x_scalar):
         """
@@ -90,6 +88,9 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
 
         img_batck_list = []
+
+        img_batck_list.append(batch["ground_height_image"].clone().detach().float())
+
 
         for i in range(self.nb_back):
             x_image_back = batch[f"back_{i}"].clone().detach().float()  # (B, H, W, C)
@@ -207,7 +208,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         tmp_noise = torch.randn_like(x_image_future).to(self.device)
 
-        for i in range(nb_step - 1):
+        for i in range(nb_step):
             # concat x_t with x_image_back and x_ground_station_image_previous
             input_model = torch.cat([tmp_noise, x_image_back], dim=-1)
 
