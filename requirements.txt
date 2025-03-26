@@ -5,3 +5,6 @@ matplotlib
 pyarrow
 segmentation_models_pytorch
 lightning
+datasets
+"huggingface_hub[cli]"
+tensorflow

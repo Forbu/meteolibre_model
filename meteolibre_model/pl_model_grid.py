@@ -6,8 +6,6 @@ import torch
 import torch.nn as nn
 import lightning.pytorch as pl
 from meteolibre_model.model_unet import UnetFilmModel
-from meteolibre_model.dataset_cutting_grid import MeteoLibreDatasetPartialGrid
-from torch.utils.data import DataLoader
 
 import matplotlib.pyplot as plt
 

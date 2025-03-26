@@ -33,6 +33,7 @@ class UnetFilmModel(nn.Module):
             encoder_name=encoder_name,  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
             in_channels=input_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
             classes=output_channels,  # model output channels (number of classes in your dataset)
+            pretrained='imagenet',
         )
 
         self.film1 = FilmLayer(num_features=input_channels, condition_size=condition_size)

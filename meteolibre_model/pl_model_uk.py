@@ -6,8 +6,6 @@ import torch
 import torch.nn as nn
 import lightning.pytorch as pl
 from meteolibre_model.model_unet import UnetFilmModel
-from meteolibre_model.test_dataset_uk_dm import TFDataset
-from torch.utils.data import DataLoader
 
 import matplotlib.pyplot as plt
 
@@ -26,7 +24,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
     def __init__(
         self,
         condition_size,
-        learning_rate=1e-2,
+        learning_rate=1e-3,
         nb_back=3,
         nb_future=1,
         shape_image=512,
@@ -102,12 +100,16 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # and contains 'back_0', 'future_0', 'hour' keys
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
-        prior_image = torch.randn_like(batch["target_radar_frames"])
+        prior_image = torch.randn_like(batch["target_radar_frames"]).to(
+            batch["target_radar_frames"].device
+        )
+
+
 
         # Time variable for Rectified Flow - sample uniformly
         t = torch.rand(batch["target_radar_frames"].shape[0], 1, 1, 1).type_as(
             batch["target_radar_frames"]
-        )  # (B, 1)
+        ).to(batch["target_radar_frames"].device)  # (B, 1)
 
         # we create a scalar value to condition the model on time stamp
         # and hours
@@ -115,7 +117,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_minute = batch["minute"].clone().detach().float().unsqueeze(1)  # (B, 1)
 
         # Simple scalar condition: hour of the day and minutes of the day. You might want to expand this.
-        x_scalar = torch.cat([x_hour, x_minute, t], dim=1)
+        x_scalar = torch.cat([x_hour, x_minute, t[:, :, 0, 0]], dim=1)
 
         # Interpolate between prior and data to get x_t
         x_t = t * batch["target_radar_frames"] + (1 - t) * prior_image
@@ -161,6 +163,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # convert to device
         batch = {k: v.to(self.device) for k, v in batch.items()}
 
+        batch_size = batch["target_radar_frames"].shape[0]
+
         x_image_future = batch["target_radar_frames"]
         x_image_back = batch["input_radar_frames"]
 
@@ -177,7 +181,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 [
                     batch["hour"].clone().detach().float().unsqueeze(1),
                     batch["minute"].clone().detach().float().unsqueeze(1),
-                    t,
+                    torch.ones(batch_size, 1).type_as(batch["target_radar_frames"]).to(self.device) * t,
                 ],
                 dim=1,
             )
@@ -200,16 +204,15 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             nb_batch=1, nb_step=100
         )
 
-        self.save_image(result, name_append="result")
-        self.save_image(x_image_future, name_append="future")
-        self.save_image(x_image_back, name_append="previous")
+        self.save_image(result[0, :, :, 0].cpu().numpy(), name_append="result")
+        self.save_image(x_image_future[0, :, :, 0].cpu().numpy(), name_append="future")
+        self.save_image(x_image_back[0, :, :, -1].cpu().numpy(), name_append="previous")
 
         self.train()
 
     def save_image(self, result, name_append="result"):
-        radar_image = result[:, :, :, -1].cpu().numpy()
+        radar_image = result
 
-        radar_image = radar_image[0]
 
         fname = (
             self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"

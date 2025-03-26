@@ -26,4 +26,4 @@ class FilmLayer(nn.Module):
         gamma = gamma.unsqueeze(-1).unsqueeze(-1) # (B, C, 1, 1) to match feature map dims
         beta = beta.unsqueeze(-1).unsqueeze(-1)   # (B, C, 1, 1)
 
-        return gamma * x + beta
+        return (1.0 + gamma) * x + beta

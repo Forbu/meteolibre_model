@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 
 import torch
 from datasets import load_dataset
@@ -46,8 +46,6 @@ class TFDataset(torch.utils.data.dataset.Dataset):
             )
             row = next(self.iter_reader)
 
-        print(row["end_time_timestamp"])
-
         input_frames, target_frames = extract_input_and_target_frames(
             row["radar_frames"]
         )
@@ -55,14 +53,28 @@ class TFDataset(torch.utils.data.dataset.Dataset):
         # get timestamp
         date_timestamp = row["end_time_timestamp"]
 
+        input_frames, target_frames = (
+            np.squeeze(input_frames, axis=-1),
+            np.squeeze(target_frames, axis=-1),
+        )
+
+
+
+        input_frames, target_frames = (
+            np.moveaxis(input_frames, [0, 1, 2], [2, 0, 1]),
+            np.moveaxis(target_frames, [0, 1, 2], [2, 0, 1]),
+        )
+
+
+
         # convert to datetime object
         date_object = datetime.fromtimestamp(date_timestamp)
 
         dict_return = {
-            "hour": date_object.hour/24.,
-            "minute": date_object.minute/60.,
-            "input_radar_frames": input_frames,
-            "target_radar_frames": target_frames,
+            "hour": date_object.hour / 24.0,
+            "minute": date_object.minute / 60.0,
+            "input_radar_frames": input_frames / 20.0,
+            "target_radar_frames": target_frames[:, :, :4] / 20.0,
         }
 
         return dict_return
