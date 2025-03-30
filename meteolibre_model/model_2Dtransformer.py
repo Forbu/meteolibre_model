@@ -14,30 +14,41 @@ Take also scalar element (matching flow time and hour of the day) as input.
 The model is a simple CNN with some conv layers and also film layers for the scalar input.
 """
 
-import segmentation_models_pytorch as smp
+from meteolibre_model.model_dit import DiT
 import torch.nn as nn
 
-from meteolibre_model.utils import FilmLayer
 
-class UnetFilmModel(nn.Module):
+class TransfomerFilmModel(nn.Module):
     def __init__(
         self,
         input_channels,
         output_channels,
         condition_size,
-        encoder_name="efficientnet-b3",
+        patch_size=2,
     ):
         super().__init__()
 
-        self.model = smp.Unet(
-            encoder_name=encoder_name,  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
-            in_channels=input_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-            classes=output_channels,  # model output channels (number of classes in your dataset)
-            encoder_weights='imagenet',
+        self.model = DiT(
+            depth=6,
+            hidden_size=384,
+            patch_size=2,
+            num_heads=6,
+            input_size=128,
+            in_channels=input_channels,
+            out_channels=output_channels,
+        )
+        self.hidden_size = 384
+
+        self.condition_size = condition_size
+
+        # projection to hidden size
+        self.mlp = nn.Sequential(
+            nn.Linear(condition_size, self.hidden_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(self.hidden_size, self.hidden_size, bias=True),
         )
 
-        self.film1 = FilmLayer(num_features=input_channels, condition_size=condition_size)
-        self.film2 = FilmLayer(output_channels, condition_size=condition_size)
+        self.output_channels = output_channels
 
     def forward(self, x_image, x_scalar):
         """
@@ -50,9 +61,10 @@ class UnetFilmModel(nn.Module):
         """
         x_image = x_image.permute(0, 3, 1, 2)
 
-        out = self.film1(x_image, x_scalar)
-        out = self.model(x_image)
-        out = self.film2(out, x_scalar)
+        # image is of size (B, C, H, W)
+        # now we want to create patch
+        x_scalar = self.mlp(x_scalar)
+        out = self.model(x_image, x_scalar)
 
         out = out.permute(0, 2, 3, 1)
 
