@@ -29,11 +29,29 @@ Here is a global overview of the data :
 ## First step 
 
 1. The first element / step is to forecast the evolution of the radar image.
+DONE
 
 2. Second element is to add the ground station input / output to enrich the feature space
+DONE
 
 3. Adding the elevation information to improve forecast
 
+
 4. Adding ground clear sky irradiance
+TO BE DONE
+
 
 4. Extend prediction to whole europe with new dataset !
+TO BE DONE
+
+## Current test setup
+
+First test on MF (meteo france) radar : not conclusive too much noise
+(scripts/training_grid.py)
+
+Second test on UK dataset : better learning but using UNET / segformer give a oversmoothing image ...
+(scripts/training_grid_uk.py)
+
+Third test on UK dataset : using DiT architecture we achieve a better diffusion result (and indeed we get better image)
+
+Forth test on UK dataset : using DiT architecture with local modifycation to reduce compute complexity

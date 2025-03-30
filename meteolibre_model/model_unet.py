@@ -25,11 +25,11 @@ class UnetFilmModel(nn.Module):
         input_channels,
         output_channels,
         condition_size,
-        encoder_name="efficientnet-b3",
+        encoder_name="mit_b1",
     ):
         super().__init__()
 
-        self.model = smp.Unet(
+        self.model = smp.Segformer(
             encoder_name=encoder_name,  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
             in_channels=input_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
             classes=output_channels,  # model output channels (number of classes in your dataset)

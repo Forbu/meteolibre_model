@@ -19,6 +19,22 @@ def extract_input_and_target_frames(radar_frames):
     return input_frames, target_frames
 
 
+def max_pool_2x2(frames):
+    """
+    Downsamples frames by a factor of 2 using max pooling.
+    Assumes input frames have shape (H, W, T).
+    """
+    H, W, T = frames.shape
+    # Ensure dimensions are even for simple 2x2 pooling
+    if H % 2 != 0 or W % 2 != 0:
+        raise ValueError(f"Frame dimensions ({H}, {W}) must be even for 2x2 max pooling.")
+
+    # Reshape to group into 2x2 blocks: (H/2, 2, W/2, 2, T)
+    # Then take the maximum over the 2x2 block dimensions (axes 1 and 3)
+    pooled_frames = frames.reshape(H // 2, 2, W // 2, 2, T).max(axis=(1, 3))
+    return pooled_frames
+
+
 class TFDataset(torch.utils.data.dataset.Dataset):
     def __init__(self, split):
         super().__init__()
@@ -32,7 +48,7 @@ class TFDataset(torch.utils.data.dataset.Dataset):
         self.iter_reader = self.reader
 
     def __len__(self):
-        return 10000
+        return 2000
 
     def __getitem__(self, item):
         try:
@@ -58,14 +74,24 @@ class TFDataset(torch.utils.data.dataset.Dataset):
             np.squeeze(target_frames, axis=-1),
         )
 
-
-
         input_frames, target_frames = (
             np.moveaxis(input_frames, [0, 1, 2], [2, 0, 1]),
             np.moveaxis(target_frames, [0, 1, 2], [2, 0, 1]),
         )
 
+        # check is there is something in the first frame (if not switch to another sample)
+        if np.sum(input_frames[:, :, 0]) <= 20:
+            return self.__getitem__(item + 1)
 
+
+        # --- Max Pooling Step ---
+        try:
+            input_frames_pooled = max_pool_2x2(input_frames)
+            target_frames_pooled = max_pool_2x2(target_frames)
+        except ValueError as e:
+            print(f"Skipping item due to incompatible shape for pooling: {e}")
+            print(f"Original input shape: {input_frames.shape}")
+            return self.__getitem__(item + 1)
 
         # convert to datetime object
         date_object = datetime.fromtimestamp(date_timestamp)
@@ -73,8 +99,8 @@ class TFDataset(torch.utils.data.dataset.Dataset):
         dict_return = {
             "hour": date_object.hour / 24.0,
             "minute": date_object.minute / 60.0,
-            "input_radar_frames": input_frames / 20.0,
-            "target_radar_frames": target_frames[:, :, :4] / 20.0,
+            "input_radar_frames": input_frames_pooled / 10.0,
+            "target_radar_frames": target_frames_pooled[:, :, :4] / 10.0,
         }
 
         return dict_return

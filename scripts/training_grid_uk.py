@@ -16,6 +16,8 @@ from lightning.pytorch.loggers import WandbLogger
 
 from torch.utils.data import DataLoader
 
+import torch
+torch.set_float32_matmul_precision('medium')
 
 def init_dataset():
     dataset = TFDataset(
@@ -45,6 +47,8 @@ if __name__ == "__main__":
         test_dataloader=val_dataloader,
         nb_back=4,
         nb_future=4,
+        loss_type="mse",
+        parametrization="noisy",
     )
 
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")

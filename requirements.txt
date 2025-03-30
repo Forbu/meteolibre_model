@@ -8,3 +8,4 @@ lightning
 datasets
 "huggingface_hub[cli]"
 tensorflow
+timm

@@ -81,4 +81,7 @@ if __name__ == "__main__":
         model, train_dataloader, val_dataloader
     )  # Pass val_dataloader if you have validation step in model
 
+    # Save the model
+    trainer.save_checkpoint(f"meteolibre_model_{trainer.current_epoch}.ckpt")
+
     print("Training finished!")

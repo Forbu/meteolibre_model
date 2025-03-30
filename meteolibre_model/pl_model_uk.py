@@ -2,14 +2,19 @@
 meteolibre_model/meteolibre_model/pl_model.py
 """
 
+from mpmath.libmp import prec_to_dps
+from pandas.io.formats.printing import PrettyDict
 import torch
 import torch.nn as nn
 import lightning.pytorch as pl
-from meteolibre_model.model_unet import UnetFilmModel
+
 
 import matplotlib.pyplot as plt
 
 import wandb
+
+from meteolibre_model.model_unet import UnetFilmModel
+from meteolibre_model.perceptual_loss import VGGLoss
 
 
 class MeteoLibrePLModelGrid(pl.LightningModule):
@@ -30,6 +35,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         shape_image=512,
         test_dataloader=None,
         dir_save="../",
+        loss_type="mse",
+        parametrization="endpoint",
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -58,6 +65,13 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.nb_future = nb_future
 
         self.shape_image = shape_image
+        self.loss_type = loss_type
+        self.parametrization = parametrization
+
+        if loss_type == "mse":
+            self.fn_loss = nn.MSELoss(reduction="none")
+        elif loss_type == "perceptual":
+            self.fn_loss = VGGLoss(reduction="none")
 
     def forward(self, x_image, x_scalar):
         """
@@ -104,12 +118,12 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             batch["target_radar_frames"].device
         )
 
-
-
         # Time variable for Rectified Flow - sample uniformly
-        t = torch.rand(batch["target_radar_frames"].shape[0], 1, 1, 1).type_as(
-            batch["target_radar_frames"]
-        ).to(batch["target_radar_frames"].device)  # (B, 1)
+        t = (
+            torch.rand(batch["target_radar_frames"].shape[0], 1, 1, 1)
+            .type_as(batch["target_radar_frames"])
+            .to(batch["target_radar_frames"].device)
+        )  # (B, 1)
 
         # we create a scalar value to condition the model on time stamp
         # and hours
@@ -125,20 +139,47 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # concat x_t with x_image_back and x_ground_station_image_previous
         input_model = torch.cat([x_t, batch["input_radar_frames"]], dim=-1)
 
-        # Predict velocity field v_t using the model
-        end_t_predicted = self.forward(input_model, x_scalar)
+        if self.parametrization == "endpoint":
+            # Predict endpoint field v_t using the model
+            pred = self.forward(input_model, x_scalar)
 
-        # coefficient of ponderation for endpoint parametrization
-        w_t = t / (1 - t)
-        w_t = torch.clamp(w_t, min=0.05, max=2.0)
+            # coefficient of ponderation for endpoint parametrization
+            w_t = t / (1 - t)
+            w_t = torch.clamp(w_t, min=0.05, max=2.0)
 
-        # Loss is MSE between predicted and target velocity fields
-        loss = self.criterion(end_t_predicted, batch["target_radar_frames"])
-        loss = w_t * loss  # ponderate loss
+            target = batch["target_radar_frames"]
 
-        loss = loss.mean()
+        elif self.parametrization == "noisy":
+            # prediction the noise
+            pred = self.forward(input_model, x_scalar)
 
-        # Log the loss
+            # coefficient of ponderation for noisy parametrization
+            w_t = (1 / (t + 0.0001)) ** 2
+
+            w_t = torch.clamp(w_t, min=1.0, max=3.0)
+
+            target = prior_image
+
+        if self.loss_type == "mse":
+            # Loss is MSE between predicted and target velocity fields
+            loss = self.fn_loss(pred, target)
+            loss = w_t * loss  # ponderate loss
+
+            loss = loss.mean()
+        else:
+            loss = 0
+
+            for i in range(self.nb_future):
+                loss += self.fn_loss(
+                    pred.permute(0, 3, 1, 2)[:, [i]].repeat(1, 3, 1, 1),
+                    target.permute(0, 3, 1, 2)[:, [i]].repeat(1, 3, 1, 1),
+                )
+
+            loss = w_t * loss  # ponderate loss
+
+            loss = loss.mean()
+
+        # Log the lossruff
         self.log("train_loss", loss)
 
         return loss
@@ -154,7 +195,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         return optimizer
 
     @torch.no_grad()
-    def generate_one(self, nb_batch=1, nb_step=100):
+    def generate_one(self, nb_batch=1, nb_step=200):
         # Assuming batch is a dictionary returned by TFDataset
         # we first generate a random noise
         for batch in self.test_dataloader:
@@ -168,10 +209,11 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_image_future = batch["target_radar_frames"]
         x_image_back = batch["input_radar_frames"]
 
-
         tmp_noise = torch.randn_like(x_image_future).to(self.device)
 
-        for i in range(nb_step):
+        init_noise = tmp_noise.clone()
+
+        for i in range(1, nb_step):
             # concat x_t with x_image_back and x_ground_station_image_previous
             input_model = torch.cat([tmp_noise, x_image_back], dim=-1)
 
@@ -181,27 +223,58 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 [
                     batch["hour"].clone().detach().float().unsqueeze(1),
                     batch["minute"].clone().detach().float().unsqueeze(1),
-                    torch.ones(batch_size, 1).type_as(batch["target_radar_frames"]).to(self.device) * t,
+                    torch.ones(batch_size, 1)
+                    .type_as(batch["target_radar_frames"])
+                    .to(self.device)
+                    * t,
                 ],
                 dim=1,
             )
 
-            endpoint = self.forward(input_model, x_scalar)
+            if self.parametrization == "endpoint":
+                endpoint = self.forward(input_model, x_scalar)
 
-            # velocity field
-            velocity = 1 / (1 - t + 1e-4) * (endpoint - tmp_noise)
+                # velocity field
+                velocity = 1 / (1 - t + 1e-4) * (endpoint - tmp_noise)
 
-            # addinf the velocity to the noise
-            tmp_noise = tmp_noise + 1.0 / nb_step * velocity
+                # addinf the velocity to the noise
+                tmp_noise = tmp_noise + 1.0 / nb_step * velocity
 
-        return tmp_noise, x_image_future, x_image_back[:, :, :, [-1]]
+            elif self.parametrization == "noisy":
+                noise = self.forward(input_model, x_scalar)
+
+                # velocity field
+                velocity = 1 / t * (tmp_noise - noise)
+
+                # addinf the velocity to the noise
+                tmp_noise = tmp_noise + 1.0 / nb_step * velocity
+
+                # save image
+                if i % 20 == 1:
+                    self.save_image(
+                        tmp_noise[0, :, :, 0].cpu().numpy(), name_append=f"result_noisy_{i}"
+                    )
+
+                    self.save_image(
+                        noise[0, :, :, 0].cpu().numpy(), name_append=f"result_pred_noisy_{i}"
+                    )
+
+                    self.save_image(
+                        1.0 / nb_step * velocity[0, :, :, 0].cpu().numpy(), name_append=f"step_{i}"
+                    )
+
+        self.save_image(
+            init_noise[0, :, :, 0].cpu().numpy(), name_append=f"init_noisy_{i}"
+        )
+
+        return tmp_noise, x_image_future, x_image_back
 
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
         self.eval()
         result, x_image_future, x_image_back = self.generate_one(
-            nb_batch=1, nb_step=100
+            nb_batch=1, nb_step=200
         )
 
         self.save_image(result[0, :, :, 0].cpu().numpy(), name_append="result")
@@ -212,7 +285,6 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
     def save_image(self, result, name_append="result"):
         radar_image = result
-
 
         fname = (
             self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
@@ -229,3 +301,6 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.logger.log_image(
             key=name_append, images=[wandb.Image(fname)], caption=[name_append]
         )
+
+    def visualize_noise(self):
+        pass        
