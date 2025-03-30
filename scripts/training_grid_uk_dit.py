@@ -62,6 +62,7 @@ if __name__ == "__main__":
         #accelerator="cpu", # debug
         gradient_clip_val=1.0,
         log_every_n_steps=5,
+        enable_checkpointing=False,
     )  # fast_dev_run=True for quick debugging
 
     trainer.fit(
