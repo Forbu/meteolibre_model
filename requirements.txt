@@ -6,6 +6,7 @@ pyarrow
 segmentation_models_pytorch
 lightning
 datasets
-"huggingface_hub[cli]"
+#"huggingface_hub[cli]"
 tensorflow
 timm
+wandb

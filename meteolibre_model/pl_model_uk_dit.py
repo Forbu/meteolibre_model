@@ -15,7 +15,7 @@ import wandb
 
 from meteolibre_model.model_2Dtransformer import TransfomerFilmModel
 
-from heavyball import ForeachSOAP
+#from heavyball import ForeachSOAP
 
 
 class MeteoLibrePLModelGrid(pl.LightningModule):
@@ -30,7 +30,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
     def __init__(
         self,
         condition_size,
-        learning_rate=1e-3,
+        learning_rate=1e-4,
         nb_back=3,
         nb_future=1,
         shape_image=512,
@@ -192,8 +192,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        #optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()
