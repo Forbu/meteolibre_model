@@ -46,7 +46,7 @@ if __name__ == "__main__":
         condition_size=3,
         test_dataloader=val_dataloader,
         nb_back=4,
-        nb_future=4,
+        nb_future=12,
         loss_type="mse",
         parametrization="endpoint",
     )
