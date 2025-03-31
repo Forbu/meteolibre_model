@@ -10,3 +10,4 @@ datasets
 tensorflow-cpu
 timm
 wandb
+imageio

@@ -13,9 +13,12 @@ import matplotlib.pyplot as plt
 from torch.optim import optimizer
 import wandb
 
+from PIL import Image
+
 from meteolibre_model.model_2Dtransformer import TransfomerFilmModel
 
 from heavyball import ForeachSOAP, ForeachMuon
+import imageio
 
 
 class MeteoLibrePLModelGrid(pl.LightningModule):
@@ -192,12 +195,12 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()
-    def generate_one(self, nb_batch=1, nb_step=200):
+    def generate_one(self, nb_batch=1, nb_step=100):
         # Assuming batch is a dictionary returned by TFDataset
         # we first generate a random noise
         for batch in self.test_dataloader:
@@ -236,10 +239,36 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             if self.parametrization == "endpoint":
                 endpoint = self.forward(input_model, x_scalar)
 
-                # velocity field
                 velocity = 1 / (1 - t + 1e-4) * (endpoint - tmp_noise)
 
-                # addinf the velocity to the noise
+                # velocity field (midpoint solver - first part)
+                intermediate_noise = tmp_noise + 0.5 / nb_step * velocity
+
+                # midpoint t
+                midpoint_t = t + 0.5 / nb_step
+
+                # recalculate x_scalar with midpoint_t
+                x_scalar_midpoint = torch.cat(
+                    [
+                        batch["hour"].clone().detach().float().unsqueeze(1),
+                        batch["minute"].clone().detach().float().unsqueeze(1),
+                        torch.ones(batch_size, 1)
+                        .type_as(batch["target_radar_frames"])
+                        .to(self.device)
+                        * midpoint_t,
+                    ],
+                    dim=1,
+                )
+                input_model_midpoint = torch.cat(
+                    [intermediate_noise, x_image_back], dim=-1
+                )
+                endpoint_midpoint = self.forward(
+                    input_model_midpoint, x_scalar_midpoint
+                )
+
+                velocity = 1 / (1 - midpoint_t + 1e-4) * (endpoint_midpoint - tmp_noise)
+
+                # adding the velocity to the noise (midpoint solver)
                 tmp_noise = tmp_noise + 1.0 / nb_step * velocity
 
             elif self.parametrization == "noisy":
@@ -251,24 +280,6 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 # addinf the velocity to the noise
                 tmp_noise = tmp_noise + 1.0 / nb_step * velocity
 
-                # save image
-                if i % 20 == 1:
-                    self.save_image(
-                        tmp_noise[0, :, :, 0].cpu().numpy(), name_append=f"result_noisy_{i}"
-                    )
-
-                    self.save_image(
-                        noise[0, :, :, 0].cpu().numpy(), name_append=f"result_pred_noisy_{i}"
-                    )
-
-                    self.save_image(
-                        1.0 / nb_step * velocity[0, :, :, 0].cpu().numpy(), name_append=f"step_{i}"
-                    )
-
-        self.save_image(
-            init_noise[0, :, :, 0].cpu().numpy(), name_append=f"init_noisy_{i}"
-        )
-
         return tmp_noise, x_image_future, x_image_back
 
     # on epoch end of training
@@ -276,14 +287,45 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # generate image
         self.eval()
         result, x_image_future, x_image_back = self.generate_one(
-            nb_batch=1, nb_step=200
+            nb_batch=1, nb_step=100
         )
 
         self.save_image(result[0, :, :, 0].cpu().numpy(), name_append="result")
         self.save_image(x_image_future[0, :, :, 0].cpu().numpy(), name_append="future")
         self.save_image(x_image_back[0, :, :, -1].cpu().numpy(), name_append="previous")
 
+        self.save_gif(result[0, :, :, :].cpu().numpy(), name_append="result_gif")
+        self.save_gif(
+            x_image_future[0, :, :, :].cpu().numpy(), name_append="future_gif"
+        )
+
         self.train()
+
+    def save_gif(self, result, name_append="result", duration=10):
+        nb_frame = result.shape[2]
+        file_name_list = []
+
+        for i in range(nb_frame):
+            fname = (
+                self.dir_save
+                + f"data/{name_append}_radar_epoch_{self.current_epoch}_{i}.png"
+            )
+
+            plt.figure(figsize=(20, 20))
+            plt.imshow(result[:, :, i], vmin=-1, vmax=2)
+            plt.colorbar()
+
+            plt.savefig(fname, bbox_inches="tight", pad_inches=0)
+            plt.close()
+
+            file_name_list.append(fname)
+
+        create_gif_pillow(
+            image_paths=file_name_list,
+            output_path=self.dir_save
+            + f"data/{name_append}_radar_epoch_{self.current_epoch}.gif",
+            duration=duration,
+        )
 
     def save_image(self, result, name_append="result"):
         radar_image = result
@@ -304,5 +346,36 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             key=name_append, images=[wandb.Image(fname)], caption=[name_append]
         )
 
-    def visualize_noise(self):
-        pass        
+
+def create_gif_pillow(image_paths, output_path, duration=100):
+    """
+    Creates a GIF from a list of image paths using Pillow.
+
+    Args:
+      image_paths: A list of strings, where each string is the path to an image file.
+      output_path: The path where the GIF will be saved (e.g., 'output.gif').
+      duration: The duration (in milliseconds) to display each frame in the GIF.
+    """
+    images = []
+    for path in image_paths:
+        try:
+            img = Image.open(path)
+            images.append(img)
+        except FileNotFoundError:
+            print(f"Error: Image not found at {path}")
+            return
+
+    if images:
+        first_frame = images[0]
+        remaining_frames = images[1:]
+
+        first_frame.save(
+            output_path,
+            save_all=True,
+            append_images=remaining_frames,
+            duration=duration,
+            loop=0,  # 0 means loop indefinitely
+        )
+        print(f"GIF created successfully at {output_path}")
+    else:
+        print("No valid images found to create GIF.")
