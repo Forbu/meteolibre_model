@@ -55,7 +55,7 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_model")
 
     trainer = pl.Trainer(
-        max_time={"hours": 20},
+        max_time={"hours": 10},
         logger=logger,
         accumulate_grad_batches=8,
         #fast_dev_run=True,

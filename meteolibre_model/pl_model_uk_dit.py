@@ -2,6 +2,8 @@
 meteolibre_model/meteolibre_model/pl_model.py
 """
 
+import os
+
 from mpmath.libmp import prec_to_dps
 import torch
 import torch.nn as nn
@@ -90,6 +92,28 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
         return self.model(x_image, x_scalar)
 
+    def init_prior(self, batch_size, shape_target):
+        nb_channels = shape_target[-1]
+
+        list_noise = []
+
+        noise_current = torch.randn(
+            (batch_size, shape_target[1], shape_target[2], 1), device=self.device
+        )
+
+        for _ in range(nb_channels):
+            list_noise.append(noise_current)
+            noise_current = noise_current + 0.2 * torch.randn(
+                (batch_size, shape_target[1], shape_target[2], 1), device=self.device
+            )
+
+        list_noise = torch.cat(list_noise, dim=-1)
+
+        # normalize to get a std of 1 for each channel (last dim)
+        list_noise = list_noise / torch.std(list_noise, dim=(0, 1, 2), keepdim=True)
+
+        return list_noise
+
     def training_step(self, batch, batch_idx):
         """
         Training step for the PyTorch Lightning module.
@@ -118,8 +142,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # and contains 'back_0', 'future_0', 'hour' keys
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
-        prior_image = torch.randn_like(batch["target_radar_frames"]).to(
-            batch["target_radar_frames"].device
+        prior_image = self.init_prior(
+            batch["target_radar_frames"].shape[0], batch["target_radar_frames"].shape
         )
 
         # Time variable for Rectified Flow - sample uniformly
@@ -214,9 +238,9 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_image_future = batch["target_radar_frames"]
         x_image_back = batch["input_radar_frames"]
 
-        tmp_noise = torch.randn_like(x_image_future).to(self.device)
-
-        init_noise = tmp_noise.clone()
+        tmp_noise = self.init_prior(
+            nb_batch, batch["target_radar_frames"].shape
+        )
 
         for i in range(1, nb_step):
             # concat x_t with x_image_back and x_ground_station_image_previous
@@ -298,6 +322,10 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.save_gif(
             x_image_future[0, :, :, :].cpu().numpy(), name_append="future_gif"
         )
+
+        # now we delete all the png files (not the gif)
+        for f in glob.glob(self.dir_save + "data/*.png"):
+            os.remove(f)
 
         self.train()
 
