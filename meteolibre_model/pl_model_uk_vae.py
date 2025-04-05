@@ -54,7 +54,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
             in_channels=1,
             out_channels=1,
             act_fn="silu",
-            block_out_channels=[128//2, 256//2, 512//2, 512//2],
+            block_out_channels=[128, 256, 512, 512],
             down_block_types=[
                 "DownEncoderBlock2D",
                 "DownEncoderBlock2D",
@@ -136,8 +136,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        #optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()
