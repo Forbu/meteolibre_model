@@ -1,10 +1,8 @@
 """
 Script for module training
-
-
 """
 
-from meteolibre_model.pl_model_uk_dit import MeteoLibrePLModelGrid
+from meteolibre_model.pl_model_uk_vae import VAEMeteoLibrePLModelGrid
 from meteolibre_model.dataset_uk_dm import TFDataset
 
 from meteolibre_model.dataset_cutting_grid import (
@@ -37,27 +35,22 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True,) #num_workers=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True,) #num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
 
-    model = MeteoLibrePLModelGrid(
-        condition_size=3,
+    model = VAEMeteoLibrePLModelGrid(
         test_dataloader=val_dataloader,
-        nb_back=4,
-        nb_future=12,
-        loss_type="mse",
-        parametrization="endpoint",
     )
 
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
-    logger = WandbLogger(project="meteolibre_model")
+    logger = WandbLogger(project="meteolibre_model_vae")
 
     trainer = pl.Trainer(
-        max_time={"hours": 10},
+        max_time={"hours": 20},
         logger=logger,
-        accumulate_grad_batches=8,
+        accumulate_grad_batches=2,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
         gradient_clip_val=1.0,
@@ -70,3 +63,6 @@ if __name__ == "__main__":
     )  # Pass val_dataloader if you have validation step in model
 
     print("Training finished!")
+
+    # Save the model without the optimizer
+    torch.save(model.state_dict(), "model_vae.pt")

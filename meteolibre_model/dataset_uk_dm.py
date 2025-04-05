@@ -48,7 +48,7 @@ class TFDataset(torch.utils.data.dataset.Dataset):
         self.iter_reader = self.reader
 
     def __len__(self):
-        return 2000
+        return 10000
 
     def __getitem__(self, item):
         try:
@@ -86,8 +86,8 @@ class TFDataset(torch.utils.data.dataset.Dataset):
 
         # --- Max Pooling Step ---
         try:
-            input_frames_pooled = max_pool_2x2(input_frames)
-            target_frames_pooled = max_pool_2x2(target_frames)
+            input_frames_pooled = input_frames #max_pool_2x2(input_frames)
+            target_frames_pooled = target_frames #max_pool_2x2(target_frames)
         except ValueError as e:
             print(f"Skipping item due to incompatible shape for pooling: {e}")
             print(f"Original input shape: {input_frames.shape}")

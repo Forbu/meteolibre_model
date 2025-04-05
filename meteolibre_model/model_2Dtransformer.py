@@ -24,20 +24,22 @@ class TransfomerFilmModel(nn.Module):
         input_channels,
         output_channels,
         condition_size,
-        patch_size=2,
+        patch_size=1,
+        hidden_size=384//2,
     ):
         super().__init__()
 
+        self.hidden_size = hidden_size
+
         self.model = DiT(
             depth=6,
-            hidden_size=384,
-            patch_size=2,
+            hidden_size=hidden_size,
+            patch_size=patch_size,
             num_heads=6,
             input_size=128,
             in_channels=input_channels,
             out_channels=output_channels,
         )
-        self.hidden_size = 384
 
         self.condition_size = condition_size
 

@@ -11,3 +11,5 @@ tensorflow-cpu
 timm
 wandb
 imageio
+diffusers
+einops
