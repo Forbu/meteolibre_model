@@ -13,3 +13,4 @@ wandb
 imageio
 diffusers
 einops
+heavyball

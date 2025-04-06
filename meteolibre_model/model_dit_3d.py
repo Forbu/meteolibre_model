@@ -129,10 +129,10 @@ class FinalLayer(nn.Module):
             nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True)
         )
 
-    def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
-        x = modulate(self.norm_final(x), shift, scale)
-        x = self.linear(x)
+    def forward(self, x):
+        #shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
+        #x = modulate(self.norm_final(x), shift, scale)
+        x = self.linear(self.norm_final(x))
         return x
 
 
@@ -152,7 +152,7 @@ class DiT(nn.Module):
         mlp_ratio=4.0,
         learn_sigma=True,
         out_channels=None,
-        nb_temporals=16,
+        nb_temporals=12,
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -203,7 +203,7 @@ class DiT(nn.Module):
 
         # initialize temporal embedding
         temp_embed = get_1d_sincos_pos_embed_from_grid(
-            self.temp_embed.shape[-1], self.nb_temporals
+            self.temp_embed.shape[-1], torch.arange(self.nb_temporals)
         )
         self.temp_embed.data.copy_(torch.from_numpy(temp_embed).float().unsqueeze(0))
 
@@ -247,7 +247,7 @@ class DiT(nn.Module):
         x: (N, nb_image, C, H, W) tensor of spatial inputs (images or latent representations of images)
         scalar: (N, D) tensor of diffusion timesteps
         """
-        x = x + self.temp_embed  # temporal embedding
+        batch_size = x.shape[0]
 
         x = einops.rearrange(x, "b n c h w -> (b n) c h w")
 
@@ -255,13 +255,30 @@ class DiT(nn.Module):
             self.x_embedder(x) + self.pos_embed
         )  # (N, T, D), where T = H * W / patch_size ** 2
 
+        nb_seq = x.shape[1]
+
         # resize temporals
         x = einops.rearrange(x, "(b n) nb_seq d -> b (n nb_seq) d", n=self.nb_temporals)
 
+        # add temporal values
+        x_temporal_embeding = self.temp_embed.unsqueeze(2).repeat(1, 1, nb_seq, 1)
+        x_temporal_embeding = einops.rearrange(
+            x_temporal_embeding, "b n nb_seq d -> b (n nb_seq) d"
+        )
+
+        x = x + x_temporal_embeding
+
         for block in self.blocks:
             x = block(x, scalar)  # (N, T, D)
-        x = self.final_layer(x, scalar)  # (N, T, patch_size ** 2 * out_channels)
+
+        x = einops.rearrange(x, "b (n nb_seq) d -> (b n) nb_seq d", n=self.nb_temporals)
+
+
+        x = self.final_layer(x)  # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)  # (N, out_channels, H, W)
+
+        x = einops.rearrange(x, "(b n) c h w -> b n c h w", n=self.nb_temporals)
+
         return x
 
 

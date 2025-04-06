@@ -99,8 +99,8 @@ class TFDataset(torch.utils.data.dataset.Dataset):
         dict_return = {
             "hour": date_object.hour / 24.0,
             "minute": date_object.minute / 60.0,
-            "input_radar_frames": input_frames_pooled / 10.0,
-            "target_radar_frames": target_frames_pooled[:, :, :12] / 10.0,
+            "input_radar_frames": input_frames_pooled / 12.0,
+            "target_radar_frames": target_frames_pooled[:, :, :8] / 12.0,
         }
 
         return dict_return

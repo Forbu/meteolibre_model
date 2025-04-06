@@ -14,7 +14,7 @@ Take also scalar element (matching flow time and hour of the day) as input.
 The model is a simple CNN with some conv layers and also film layers for the scalar input.
 """
 
-from meteolibre_model.model_dit_3d import DiT_3d
+from meteolibre_model.model_dit_3d import DiT
 import torch.nn as nn
 
 
@@ -31,7 +31,7 @@ class TransfomerFilmModel(nn.Module):
 
         self.hidden_size = hidden_size
 
-        self.model = DiT_3d(
+        self.model = DiT(
             depth=12,
             hidden_size=hidden_size,
             patch_size=patch_size,
@@ -61,13 +61,11 @@ class TransfomerFilmModel(nn.Module):
         Returns:
             torch.Tensor: Output image tensor (B, H, W, C_out).
         """
-        x_image = x_image.permute(0, 3, 1, 2)
+
 
         # image is of size (B, C, H, W)
         # now we want to create patch
         x_scalar = self.mlp(x_scalar)
         out = self.model(x_image, x_scalar)
-
-        out = out.permute(0, 2, 3, 1)
 
         return out
