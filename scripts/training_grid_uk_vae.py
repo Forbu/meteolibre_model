@@ -9,6 +9,8 @@ from meteolibre_model.dataset_cutting_grid import (
     columns_measurements,
 )
 
+from safetensors.torch import save_file
+
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import WandbLogger
 
@@ -16,6 +18,8 @@ from torch.utils.data import DataLoader
 
 import torch
 torch.set_float32_matmul_precision('medium')
+
+from huggingface_hub import HfApi
 
 def init_dataset():
     dataset = TFDataset(
@@ -35,7 +39,7 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True,) #num_workers=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True,) #num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
@@ -48,9 +52,9 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_model_vae")
 
     trainer = pl.Trainer(
-        max_time={"hours": 10},
+        max_time={"hours": 1},
         logger=logger,
-        accumulate_grad_batches=4,
+        accumulate_grad_batches=2,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
         gradient_clip_val=1.0,
@@ -64,5 +68,17 @@ if __name__ == "__main__":
 
     print("Training finished!")
 
-    # Save the model without the optimizer
-    torch.save(model.state_dict(), "model_vae.pt")
+    # Save the model in safetensors format
+    save_file(model.model.state_dict(), "model_vae.safetensors")
+
+    #torch.save(model.model.state_dict(), "model_vae.pt")
+
+
+    # push file to hub
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj="model_vae.safetensors",
+        path_in_repo="weights_vae/model_vae.safetensors",
+        repo_id="Forbu14/meteolibre",
+        repo_type="model",
+    )

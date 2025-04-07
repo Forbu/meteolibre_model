@@ -34,8 +34,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
 
     def __init__(
         self,
-        learning_rate=1e-4,
-        beta=0.001,
+        learning_rate=1e-5,
+        beta=0.00001,
         test_dataloader=None,
         dir_save="../",
     ):
@@ -117,8 +117,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        #optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()
@@ -130,7 +130,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
 
         x_image = batch["target_radar_frames"][:, :, :, [0]]
         x_image = x_image.permute(0, 3, 1, 2)
-        x_image = x_image.to(self.device)
+        x_image = x_image.to(self.device).repeat(1, 3, 1, 1)
 
         # Forward pass through the model
         final_image, _ = self(x_image)
