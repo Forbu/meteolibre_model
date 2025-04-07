@@ -50,27 +50,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
             nb_future (int, optional): Number of future frames to predict. Defaults to 1.
         """
         super().__init__()
-        self.model = AutoencoderKL(
-            in_channels=1,
-            out_channels=1,
-            act_fn="silu",
-            block_out_channels=[128, 256, 512, 512],
-            down_block_types=[
-                "DownEncoderBlock2D",
-                "DownEncoderBlock2D",
-                "DownEncoderBlock2D",
-                "DownEncoderBlock2D",
-            ],
-            latent_channels=16,
-            layers_per_block=2,
-            norm_num_groups=32,
-            sample_size=256,
-            up_block_types=[
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D",
-            ],
+        self.model = AutoencoderKL.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", subfolder="vae"
         )
 
         self.learning_rate = learning_rate
@@ -107,7 +88,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # rearrange to (batch_size, 2, 256, 256)
         # and then to (batch_size * 2, 1, 256, 256)
         x_image = einops.rearrange(x_image, "b h w c -> (b c) h w")
-        x_image = x_image.unsqueeze(1)
+        x_image = x_image.unsqueeze(1).repeat(1, 3, 1, 1)
 
         # Forward pass through the model
         final_image, (latents_mean, latents_variance) = self(x_image)

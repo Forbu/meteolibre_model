@@ -35,7 +35,7 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True,) #num_workers=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True,) #num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
@@ -48,9 +48,9 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_model_vae")
 
     trainer = pl.Trainer(
-        max_time={"hours": 20},
+        max_time={"hours": 10},
         logger=logger,
-        accumulate_grad_batches=2,
+        accumulate_grad_batches=4,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
         gradient_clip_val=1.0,
