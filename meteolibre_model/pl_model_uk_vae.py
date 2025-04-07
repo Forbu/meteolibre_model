@@ -34,8 +34,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
 
     def __init__(
         self,
-        learning_rate=1e-5,
-        beta=0.00001,
+        learning_rate=1e-6,
+        beta=0.000005,
         test_dataloader=None,
         dir_save="../",
     ):

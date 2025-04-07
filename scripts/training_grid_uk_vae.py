@@ -69,7 +69,7 @@ if __name__ == "__main__":
     print("Training finished!")
 
     # Save the model in safetensors format
-    save_file(model.model.state_dict(), "model_vae.safetensors")
+    save_file(model.model.state_dict(), "diffusion_pytorch_model.safetensors")
 
     #torch.save(model.model.state_dict(), "model_vae.pt")
 
@@ -77,8 +77,8 @@ if __name__ == "__main__":
     # push file to hub
     api = HfApi()
     api.upload_file(
-        path_or_fileobj="model_vae.safetensors",
-        path_in_repo="weights_vae/model_vae.safetensors",
+        path_or_fileobj="diffusion_pytorch_model.safetensors",
+        path_in_repo="weights_vae/diffusion_pytorch_model.safetensors",
         repo_id="Forbu14/meteolibre",
         repo_type="model",
     )
