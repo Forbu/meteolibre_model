@@ -44,7 +44,7 @@ if __name__ == "__main__":
         nb_back=4,
         nb_future=8,
         loss_type="mse",
-        parametrization="endpoint",
+        parametrization="noisy",
     )
 
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")

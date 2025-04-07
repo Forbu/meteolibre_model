@@ -288,6 +288,16 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 )
 
                 tmp_noise = tmp_noise + velocity * 1.0 / nb_step
+            elif self.parametrization == "noisy":
+                noise = self.forward(input_model, x_scalar)
+
+                velocity = (
+                    1
+                    / (t + 1e-4)
+                    * (tmp_noise - noise[:, self.nb_back :, :, :, :])
+                )
+
+                tmp_noise = tmp_noise + velocity * 1.0 / nb_step
 
         return tmp_noise, target_radar_frames, input_radar_frames
 
