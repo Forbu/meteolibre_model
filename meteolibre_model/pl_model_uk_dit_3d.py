@@ -24,7 +24,7 @@ from meteolibre_model.model_3Dtransformer import TransfomerFilmModel
 from heavyball import ForeachSOAP
 
 
-NORMALIZATION_FACTOR = 0.2716
+NORMALIZATION_FACTOR = 0.769
 
 
 class MeteoLibrePLModelGrid(pl.LightningModule):
@@ -80,9 +80,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         self.fn_loss = nn.MSELoss(reduction="none")
 
-        self.vae = AutoencoderKL.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", subfolder="vae"
-        )
+        self.vae = AutoencoderKL.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae")
 
     def forward(self, x_image, x_scalar):
         """

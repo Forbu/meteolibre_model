@@ -15,6 +15,9 @@ from torch.utils.data import DataLoader
 import torch
 torch.set_float32_matmul_precision('medium')
 
+from safetensors.torch import save_file
+from huggingface_hub import HfApi
+
 def init_dataset():
     dataset = TFDataset(
         "train",
@@ -64,5 +67,22 @@ if __name__ == "__main__":
     trainer.fit(
         model, train_dataloader, val_dataloader
     )  # Pass val_dataloader if you have validation step in model
+
+
+    # Save the model in safetensors format
+    save_file(model.model.state_dict(), "diffusion_pytorch_model.safetensors")
+
+    #torch.save(model.model.state_dict(), "model_vae.pt")
+
+
+    # push file to hub
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj="diffusion_pytorch_model.safetensors",
+        path_in_repo="weights_dit3d/diffusion_pytorch_model.safetensors",
+        repo_id="Forbu14/meteolibre",
+        repo_type="model",
+    )
+
 
     print("Training finished!")

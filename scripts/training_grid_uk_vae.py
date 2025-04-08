@@ -10,6 +10,7 @@ from meteolibre_model.dataset_cutting_grid import (
 )
 
 from safetensors.torch import save_file
+from huggingface_hub import HfApi
 
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import WandbLogger
@@ -19,7 +20,7 @@ from torch.utils.data import DataLoader
 import torch
 torch.set_float32_matmul_precision('medium')
 
-from huggingface_hub import HfApi
+
 
 def init_dataset():
     dataset = TFDataset(
