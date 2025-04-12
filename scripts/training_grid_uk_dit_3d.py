@@ -18,6 +18,8 @@ torch.set_float32_matmul_precision('medium')
 from safetensors.torch import save_file
 from huggingface_hub import HfApi
 
+from lightning.pytorch.callbacks import ModelCheckpoint
+
 def init_dataset():
     dataset = TFDataset(
         "train",
@@ -36,7 +38,7 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True,) #num_workers=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True,) #num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
@@ -53,19 +55,26 @@ if __name__ == "__main__":
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
     logger = WandbLogger(project="meteolibre_model_latent")
 
+    # load model from checkpoint
+    #model = MeteoLibrePLModelGrid.load_from_checkpoint("models/last.ckpt")
+
+    # model checkpoint 
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_30h/")
+
     trainer = pl.Trainer(
-        max_time={"hours": 10},
+        max_time={"hours": 30},
         logger=logger,
         accumulate_grad_batches=2,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
+        callbacks=[callback],
         gradient_clip_val=1.0,
         log_every_n_steps=5,
-        enable_checkpointing=False,
+       # enable_checkpointing=False,
     )  # fast_dev_run=True for quick debugging
 
     trainer.fit(
-        model, train_dataloader, val_dataloader
+        model, train_dataloader, val_dataloader, ckpt_path="models/last.ckpt"
     )  # Pass val_dataloader if you have validation step in model
 
 
