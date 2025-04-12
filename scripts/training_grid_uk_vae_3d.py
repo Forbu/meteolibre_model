@@ -40,7 +40,7 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True,) #num_workers=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True,) #num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     api = HfApi()
     api.upload_file(
         path_or_fileobj="diffusion_pytorch_model.safetensors",
-        path_in_repo="weights_vae/diffusion_pytorch_model.safetensors",
+        path_in_repo="weights_vae_3d/diffusion_pytorch_model.safetensors",
         repo_id="Forbu14/meteolibre",
         repo_type="model",
     )

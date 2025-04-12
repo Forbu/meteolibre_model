@@ -53,7 +53,10 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
             latent_channels=4,
             temporal_compression_ratio=1,
             block_out_channels = (128//2, 256//2, 512//2, 512//2)
-        )
+        ).float()
+
+        self.model.enable_slicing()
+        self.model.enable_tiling()
 
         self.learning_rate = learning_rate
         self.test_dataloader = test_dataloader
@@ -89,7 +92,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # rearrange to (batch_size, 2, 256, 256)
         # and then to (batch_size * 2, 1, 256, 256)
         x_image = einops.rearrange(x_image, "b h w t -> b t h w")
-        x_image = x_image.unsqueeze(1)  # size is b c t h w
+        x_image = x_image.unsqueeze(1).float()  # size is b c t h w
 
         # Forward pass through the model
         final_image, (latents_mean, latents_variance) = self(x_image)
@@ -131,12 +134,12 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
 
         x_image = batch["target_radar_frames"][:, :, :, :]
         x_image = x_image.permute(0, 3, 1, 2)
-        x_image = x_image.unsqueeze(1)
+        x_image = x_image.unsqueeze(1).to(self.device)
 
         # Forward pass through the model
-        final_image, _ = self(x_image)
+        final_image, _ = self(x_image.float())
 
-        return final_imag[:, :, 0, :, :].permute(0, 2, 3, 1), x_image[
+        return final_image[:, :, 0, :, :].permute(0, 2, 3, 1), x_image[
             :, :, 0, :, :
         ].permute(0, 2, 3, 1)
 
