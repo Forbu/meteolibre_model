@@ -52,6 +52,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
             out_channels=1,
             latent_channels=4,
             temporal_compression_ratio=1,
+            block_out_channels = (128//2, 256//2, 512//2, 512//2)
         )
 
         self.learning_rate = learning_rate

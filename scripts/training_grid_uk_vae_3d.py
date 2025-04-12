@@ -2,7 +2,7 @@
 Script for module training
 """
 
-from meteolibre_model.vae.pl_model_uk_vae import VAEMeteoLibrePLModelGrid
+from meteolibre_model.vae.pl_model_uk_vae_3d import VAEMeteoLibrePLModelGrid
 from meteolibre_model.dataset_uk_dm import TFDataset
 
 from meteolibre_model.dataset_cutting_grid import (
