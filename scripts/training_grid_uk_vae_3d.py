@@ -54,7 +54,7 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_model_vae")
 
     # model checkpoint 
-    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v1/")
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v1/", save_weights_only=True)
 
     trainer = pl.Trainer(
         max_time={"hours": 10},
@@ -62,11 +62,13 @@ if __name__ == "__main__":
         accumulate_grad_batches=4,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
-        #callbacks=[callback],
+        callbacks=[callback],
         gradient_clip_val=1.0,
         log_every_n_steps=5,
-        enable_checkpointing=False,
+        #enable_checkpointing=False,
     )  # fast_dev_run=True for quick debugging
+
+    # 
 
     trainer.fit(
         model, train_dataloader, val_dataloader
