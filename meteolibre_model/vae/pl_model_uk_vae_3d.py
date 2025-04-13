@@ -19,7 +19,7 @@ import wandb
 
 
 from heavyball import ForeachSOAP
-from diffusers import AutoencoderKLAllegro
+from diffusers import AutoencoderKLHunyuanVideo
 
 
 class VAEMeteoLibrePLModelGrid(pl.LightningModule):
@@ -31,8 +31,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
 
     def __init__(
         self,
-        learning_rate=1e-3,
-        beta=0.000005,
+        learning_rate=1e-4,
+        beta=0.0000005,
         test_dataloader=None,
         dir_save="../",
     ):
@@ -47,13 +47,15 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
             nb_future (int, optional): Number of future frames to predict. Defaults to 1.
         """
         super().__init__()
-        self.model = AutoencoderKLAllegro(
+        self.model = AutoencoderKLHunyuanVideo(
             in_channels=1,
             out_channels=1,
             latent_channels=4,
-            temporal_compression_ratio=1,
-            block_out_channels = (128//2, 256//2, 512//2, 512//2)
+            temporal_compression_ratio= 4,
+            block_out_channels = (128//4, 256//4, 512//4, 512//4)
         ).float()
+
+        self.model.train()
 
         self.model.enable_slicing()
         self.model.enable_tiling()

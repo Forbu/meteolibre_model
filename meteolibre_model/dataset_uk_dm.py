@@ -36,7 +36,7 @@ def max_pool_2x2(frames):
 
 
 class TFDataset(torch.utils.data.dataset.Dataset):
-    def __init__(self, split):
+    def __init__(self, split, nb_frame_futur=8):
         super().__init__()
         self.reader = load_dataset(
             "openclimatefix/nimrod-uk-1km",
@@ -46,6 +46,7 @@ class TFDataset(torch.utils.data.dataset.Dataset):
             trust_remote_code=True,
         )
         self.iter_reader = self.reader
+        self.nb_frame_futur = nb_frame_futur
 
     def __len__(self):
         return 10000
@@ -100,7 +101,7 @@ class TFDataset(torch.utils.data.dataset.Dataset):
             "hour": date_object.hour / 24.0,
             "minute": date_object.minute / 60.0,
             "input_radar_frames": input_frames_pooled / 12.0,
-            "target_radar_frames": target_frames_pooled[:, :, :8] / 12.0,
+            "target_radar_frames": target_frames_pooled[:, :, :self.nb_frame_futur] / 12.0,
         }
 
         return dict_return

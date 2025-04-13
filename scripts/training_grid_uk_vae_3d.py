@@ -25,6 +25,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 def init_dataset():
     dataset = TFDataset(
         "train",
+        nb_frame_futur=9
     )
 
     return dataset
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     train_dataset = dataset
     val_dataset = dataset  # Using same dataset for now
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True,) #num_workers=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True,) #num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
     )  # Optional, if you want validation
@@ -53,13 +54,13 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_model_vae")
 
     # model checkpoint 
-    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v0/")
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v1/")
 
 
     trainer = pl.Trainer(
         max_time={"hours": 10},
         logger=logger,
-        accumulate_grad_batches=2,
+        accumulate_grad_batches=4,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
         callbacks=[callback],
