@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 import torch
 torch.set_float32_matmul_precision('medium')
 
-
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 def init_dataset():
     dataset = TFDataset(
@@ -52,15 +52,20 @@ if __name__ == "__main__":
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
     logger = WandbLogger(project="meteolibre_model_vae")
 
+    # model checkpoint 
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v0/")
+
+
     trainer = pl.Trainer(
-        max_time={"hours": 1},
+        max_time={"hours": 10},
         logger=logger,
         accumulate_grad_batches=2,
         #fast_dev_run=True,
         #accelerator="cpu", # debug
+        callbacks=[callback],
         gradient_clip_val=1.0,
         log_every_n_steps=5,
-        enable_checkpointing=False,
+        #enable_checkpointing=False,
     )  # fast_dev_run=True for quick debugging
 
     trainer.fit(
