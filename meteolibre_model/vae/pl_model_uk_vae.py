@@ -117,8 +117,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        #optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()

@@ -31,7 +31,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
 
     def __init__(
         self,
-        learning_rate=1e-4,
+        learning_rate=1e-3,
         beta=0.0000005,
         test_dataloader=None,
         dir_save="../",
@@ -123,8 +123,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        # optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()
