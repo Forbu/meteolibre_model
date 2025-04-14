@@ -54,7 +54,11 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_model_vae")
 
     # model checkpoint 
-    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v1/", save_weights_only=True)
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_3d_v2/", save_weights_only=True)
+
+    # load model weight from checkpoint
+    # model.load_state_dict(torch.load("models/finetune_vae_3d_v1/last.ckpt")["state_dict"])
+
 
     trainer = pl.Trainer(
         max_time={"hours": 10},
@@ -76,7 +80,7 @@ if __name__ == "__main__":
 
     print("Training finished!")
 
-    # Save the model in safetensors format
+    # # Save the model in safetensors format
     save_file(model.model.state_dict(), "diffusion_pytorch_model.safetensors")
 
     #torch.save(model.model.state_dict(), "model_vae.pt")

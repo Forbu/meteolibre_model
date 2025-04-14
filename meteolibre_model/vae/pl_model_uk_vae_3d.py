@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 from torch.optim import optimizer
 import wandb
 
+from PIL import Image
+
 
 from heavyball import ForeachSOAP
 from diffusers import AutoencoderKLHunyuanVideo
@@ -141,8 +143,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # Forward pass through the model
         final_image, _ = self(x_image.float())
 
-        return final_image[:, :, 0, :, :].permute(0, 2, 3, 1), x_image[
-            :, :, 0, :, :
+        return final_image[:, 0, :, :, :].permute(0, 2, 3, 1), x_image[
+            :, 0, :, :, :
         ].permute(0, 2, 3, 1)
 
     # on epoch end of training
@@ -150,15 +152,53 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # generate image
         self.eval()
 
-        result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
+        with torch.no_grad():
 
-        self.save_image(result[0, :, :, 0].cpu().numpy(), name_append="result")
-        self.save_image(x_image_future[0, :, :, 0].cpu().numpy(), name_append="future")
+            result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
+            # reshape first
+            self.save_image(result[0, :, :, 0], name_append="result")
+            self.save_image(x_image_future[0, :, :, 0], name_append="target")
 
-        self.train()
+            self.save_gif(result, name_append="result_gif_vae")
+            self.save_gif(x_image_future, name_append="target_gif_vae")
+
+            # now we delete all the png files (not the gif)
+            for f in glob.glob(self.dir_save + "data/*.png"):
+                os.remove(f)
+
+
+    def save_gif(self, result, name_append="result", duration=10):
+        nb_frame = result.shape[-1]
+
+        file_name_list = []
+
+        for i in range(nb_frame):
+            fname = (
+                self.dir_save
+                + f"data/{name_append}_radar_epoch_{self.current_epoch}_{i}.png"
+            )
+
+            radar_image = result[0, :, :, i].cpu().numpy()
+
+
+            plt.figure(figsize=(20, 20))
+            plt.imshow(radar_image, vmin=-1, vmax=2)
+            plt.colorbar()
+
+            plt.savefig(fname, bbox_inches="tight", pad_inches=0)
+            plt.close()
+
+            file_name_list.append(fname)
+
+        create_gif_pillow(
+            image_paths=file_name_list,
+            output_path=self.dir_save
+            + f"data/{name_append}_radar_epoch_{self.current_epoch}.gif",
+            duration=duration,
+        )
 
     def save_image(self, result, name_append="result"):
-        radar_image = result
+        radar_image = result.cpu().numpy()
 
         fname = (
             self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
@@ -175,3 +215,38 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         self.logger.log_image(
             key=name_append, images=[wandb.Image(fname)], caption=[name_append]
         )
+
+
+
+def create_gif_pillow(image_paths, output_path, duration=100):
+    """
+    Creates a GIF from a list of image paths using Pillow.
+
+    Args:
+      image_paths: A list of strings, where each string is the path to an image file.
+      output_path: The path where the GIF will be saved (e.g., 'output.gif').
+      duration: The duration (in milliseconds) to display each frame in the GIF.
+    """
+    images = []
+    for path in image_paths:
+        try:
+            img = Image.open(path)
+            images.append(img)
+        except FileNotFoundError:
+            print(f"Error: Image not found at {path}")
+            return
+
+    if images:
+        first_frame = images[0]
+        remaining_frames = images[1:]
+
+        first_frame.save(
+            output_path,
+            save_all=True,
+            append_images=remaining_frames,
+            duration=duration,
+            loop=0,  # 0 means loop indefinitely
+        )
+        print(f"GIF created successfully at {output_path}")
+    else:
+        print("No valid images found to create GIF.")
