@@ -152,7 +152,7 @@ class DiT(nn.Module):
         mlp_ratio=4.0,
         learn_sigma=True,
         out_channels=None,
-        nb_temporals=12,
+        nb_temporals=3,
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -244,12 +244,12 @@ class DiT(nn.Module):
     def forward(self, x, scalar):
         """
         Forward pass of DiT.
-        x: (N, nb_image, C, H, W) tensor of spatial inputs (images or latent representations of images)
+        x: (N, C, nb_timestep, H, W) tensor of spatial inputs (images or latent representations of images)
         scalar: (N, D) tensor of diffusion timesteps
         """
         batch_size = x.shape[0]
 
-        x = einops.rearrange(x, "b n c h w -> (b n) c h w")
+        x = einops.rearrange(x, "b n c h w -> (b c) n h w")
 
         x = (
             self.x_embedder(x) + self.pos_embed
@@ -277,7 +277,7 @@ class DiT(nn.Module):
         x = self.final_layer(x)  # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)  # (N, out_channels, H, W)
 
-        x = einops.rearrange(x, "(b n) c h w -> b n c h w", n=self.nb_temporals)
+        x = einops.rearrange(x, "(b n) c h w -> b c n h w", n=self.nb_temporals)
 
         return x
 

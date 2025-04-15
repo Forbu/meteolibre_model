@@ -46,20 +46,20 @@ if __name__ == "__main__":
     model = MeteoLibrePLModelGrid(
         condition_size=3,
         test_dataloader=val_dataloader,
-        nb_back=4,
-        nb_future=8,
+        nb_back=5,
+        nb_future=4,
         loss_type="mse",
         parametrization="noisy",
     )
 
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
-    logger = WandbLogger(project="meteolibre_model_latent")
+    logger = WandbLogger(project="meteolibre_model_latent_vae_3d")
 
     # load model from checkpoint
     #model = MeteoLibrePLModelGrid.load_from_checkpoint("models/last.ckpt")
 
     # model checkpoint 
-    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_vae_30h/")
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_dit_vae3d_v0/")
 
     trainer = pl.Trainer(
         max_time={"hours": 30},
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     )  # fast_dev_run=True for quick debugging
 
     trainer.fit(
-        model, train_dataloader, val_dataloader, ckpt_path="models/last.ckpt"
+        model, train_dataloader, val_dataloader #, ckpt_path="models/last.ckpt"
     )  # Pass val_dataloader if you have validation step in model
 
 

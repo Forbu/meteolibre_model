@@ -16,7 +16,7 @@ import einops
 from torch.optim import optimizer
 
 import lightning.pytorch as pl
-from diffusers import AutoencoderKL
+from diffusers import AutoencoderKL, AutoencoderKLHunyuanVideo
 
 
 from meteolibre_model.model_3Dtransformer import TransfomerFilmModel
@@ -40,8 +40,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self,
         condition_size,
         learning_rate=1e-4,
-        nb_back=3,
-        nb_future=1,
+        nb_back=5,
+        nb_future=4,
         shape_image=512,
         test_dataloader=None,
         dir_save="../",
@@ -74,13 +74,16 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.nb_back = nb_back
         self.nb_future = nb_future
 
+        self.nb_back_vae = ((self.nb_back - 1) // 4 + 1)
+
         self.shape_image = shape_image
         self.loss_type = loss_type
         self.parametrization = parametrization
 
         self.fn_loss = nn.MSELoss(reduction="none")
 
-        self.vae = AutoencoderKL.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae")
+        #self.vae = AutoencoderKL.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae")
+        self.vae = AutoencoderKLHunyuanVideo.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae_3d")
 
     def forward(self, x_image, x_scalar):
         """
@@ -100,34 +103,31 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             target_radar_frames = batch[
                 "target_radar_frames"
             ]  # (batch_size, 256, 256, nb_future)
-            target_radar_frames = target_radar_frames.unsqueeze(1).repeat(1, 3, 1, 1, 1)
+            target_radar_frames = target_radar_frames.unsqueeze(1) # (b c h w t)
             target_radar_frames = einops.rearrange(
-                target_radar_frames, "b t h w c -> (b c) t h w"
+                target_radar_frames, "b c h w t -> b c t h w"
             )
-
-            target_radar_frames = self.vae.encode(
-                target_radar_frames
-            ).latent_dist.sample()
-            target_radar_frames = einops.rearrange(
-                target_radar_frames, "(b c) t h w -> b c t h w", c=self.nb_future
-            )
-            target_radar_frames = target_radar_frames * NORMALIZATION_FACTOR
 
             input_radar_frames = batch[
                 "input_radar_frames"
             ]  # (batch_size, 256, 256, nb_back)
-            input_radar_frames = input_radar_frames.unsqueeze(1).repeat(1, 3, 1, 1, 1)
+            input_radar_frames = input_radar_frames.unsqueeze(1)
             input_radar_frames = einops.rearrange(
-                input_radar_frames, "b t h w c -> (b c) t h w"
+                input_radar_frames, "b c h w t -> b c t h w"
             )
 
-            input_radar_frames = self.vae.encode(
-                input_radar_frames
-            ).latent_dist.sample()
-            input_radar_frames = einops.rearrange(
-                input_radar_frames, "(b c) t h w -> b c t h w", c=self.nb_back
+            full_frame = torch.cat( 
+                [input_radar_frames, target_radar_frames], dim=2
             )
-            input_radar_frames = input_radar_frames * NORMALIZATION_FACTOR
+
+            full_frame = self.vae.encode(
+                full_frame
+            ).latent_dist.sample()
+
+            full_frame = full_frame * NORMALIZATION_FACTOR
+
+            target_radar_frames = full_frame[:, :, self.nb_back_vae :, :, :]
+            input_radar_frames = full_frame[:, :, : self.nb_back_vae, :, :]
 
             # detach to avoid backpropagation
             target_radar_frames = target_radar_frames.detach()
@@ -193,7 +193,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_t = t * target_radar_frames + (1 - t) * prior_image
 
         # concat x_t with x_image_back and x_ground_station_image_previous
-        input_model = torch.cat([input_radar_frames, x_t], dim=1)
+        input_model = torch.cat([input_radar_frames, x_t], dim=2)
 
         if self.parametrization == "endpoint":
             # Predict endpoint field v_t using the model
@@ -217,7 +217,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             target = prior_image
 
         # Loss is MSE between predicted and target velocity fields
-        loss = self.fn_loss(pred[:, self.nb_back :, :, :, :], target)
+        loss = self.fn_loss(pred[:, :, self.nb_back_vae :, :, :], target)
         loss = w_t * loss  # ponderate loss
 
         loss = loss.mean()
@@ -234,8 +234,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        # optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
         return optimizer
 
     @torch.no_grad()

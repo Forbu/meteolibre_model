@@ -26,6 +26,7 @@ class TransfomerFilmModel(nn.Module):
         condition_size,
         patch_size=2,
         hidden_size=384, # 768
+        nb_temporals=3,
     ):
         super().__init__()
 
@@ -39,6 +40,7 @@ class TransfomerFilmModel(nn.Module):
             input_size=32,
             in_channels=input_channels,
             out_channels=output_channels,
+            nb_temporals=nb_temporals,
         )
 
         self.condition_size = condition_size
