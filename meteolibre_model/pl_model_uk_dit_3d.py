@@ -39,12 +39,12 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
     def __init__(
         self,
         condition_size,
-        learning_rate=1e-4,
+        learning_rate=1e-3,
         nb_back=5,
         nb_future=4,
-        shape_image=512,
+        shape_image=256,
         test_dataloader=None,
-        dir_save="../",
+        dir_save="./",
         loss_type="mse",
         parametrization="endpoint",
     ):
@@ -74,7 +74,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.nb_back = nb_back
         self.nb_future = nb_future
 
-        self.nb_back_vae = ((self.nb_back - 1) // 4 + 1)
+        self.nb_back_vae = (self.nb_back - 1) // 4 + 1
 
         self.shape_image = shape_image
         self.loss_type = loss_type
@@ -82,8 +82,10 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         self.fn_loss = nn.MSELoss(reduction="none")
 
-        #self.vae = AutoencoderKL.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae")
-        self.vae = AutoencoderKLHunyuanVideo.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae_3d")
+        # self.vae = AutoencoderKL.from_pretrained("Forbu14/meteolibre", subfolder="weights_vae")
+        self.vae = AutoencoderKLHunyuanVideo.from_pretrained(
+            "Forbu14/meteolibre", subfolder="weights_vae_3d"
+        )
 
     def forward(self, x_image, x_scalar):
         """
@@ -103,7 +105,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             target_radar_frames = batch[
                 "target_radar_frames"
             ]  # (batch_size, 256, 256, nb_future)
-            target_radar_frames = target_radar_frames.unsqueeze(1) # (b c h w t)
+            target_radar_frames = target_radar_frames.unsqueeze(1)  # (b c h w t)
             target_radar_frames = einops.rearrange(
                 target_radar_frames, "b c h w t -> b c t h w"
             )
@@ -116,13 +118,9 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 input_radar_frames, "b c h w t -> b c t h w"
             )
 
-            full_frame = torch.cat( 
-                [input_radar_frames, target_radar_frames], dim=2
-            )
+            full_frame = torch.cat([input_radar_frames, target_radar_frames], dim=2)
 
-            full_frame = self.vae.encode(
-                full_frame
-            ).latent_dist.sample()
+            full_frame = self.vae.encode(full_frame).latent_dist.sample()
 
             full_frame = full_frame * NORMALIZATION_FACTOR
 
@@ -260,7 +258,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         for i in range(1, nb_step):
             # concat x_t with x_image_back and x_ground_station_image_previous
-            input_model = torch.cat([input_radar_frames, tmp_noise], dim=1)
+            input_model = torch.cat([input_radar_frames, tmp_noise], dim=2)
 
             t = i * 1.0 / nb_step
 
@@ -290,9 +288,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 noise = self.forward(input_model, x_scalar)
 
                 velocity = (
-                    1
-                    / (t + 1e-4)
-                    * (tmp_noise - noise[:, self.nb_back :, :, :, :])
+                    1 / (t + 1e-4) * (tmp_noise - noise[:, :, self.nb_back_vae :, :, :])
                 )
 
                 tmp_noise = tmp_noise + velocity * 1.0 / nb_step
@@ -309,12 +305,30 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 nb_batch=1, nb_step=100
             )
 
-            # reshape first
-            self.save_image(result[:, 0, :, :, :], name_append="result")
-            self.save_image(target_radar_frames[:, 0, :, :, :], name_append="target")
+            full_image_result = torch.cat([input_radar_frames, result], dim=2)
 
-            self.save_gif(result, name_append="result_gif")
-            self.save_gif(target_radar_frames, name_append="target_gif")
+            full_image_target = torch.cat(
+                [input_radar_frames, target_radar_frames], dim=2
+            )
+
+            radar_image_result = (
+                self.vae.decode(full_image_result / NORMALIZATION_FACTOR)
+                .sample.cpu()
+                .numpy()
+            )
+
+            radar_image_target = (
+                self.vae.decode(full_image_target / NORMALIZATION_FACTOR)
+                .sample.cpu()
+                .numpy()
+            )
+
+            # reshape first
+            self.save_image(radar_image_result, name_append="result")
+            self.save_image(radar_image_target, name_append="target")
+
+            self.save_gif(radar_image_result, name_append="result_gif")
+            self.save_gif(radar_image_target, name_append="target_gif")
 
             # now we delete all the png files (not the gif)
             for f in glob.glob(self.dir_save + "data/*.png"):
@@ -323,7 +337,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         self.model.train()
 
     def save_gif(self, result, name_append="result", duration=10):
-        nb_frame = result.shape[1]
+        nb_frame = result.shape[2]
         file_name_list = []
 
         for i in range(nb_frame):
@@ -332,14 +346,8 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 + f"data/{name_append}_radar_epoch_{self.current_epoch}_{i}.png"
             )
 
-            radar_image = (
-                self.vae.decode(result[:, i, :, :, :] / NORMALIZATION_FACTOR)
-                .sample.cpu()
-                .numpy()[0, 0, :, :]
-            )
-
             plt.figure(figsize=(20, 20))
-            plt.imshow(radar_image, vmin=-1, vmax=2)
+            plt.imshow(result[0, 0, i, :, :], vmin=-1, vmax=2)
             plt.colorbar()
 
             plt.savefig(fname, bbox_inches="tight", pad_inches=0)
@@ -357,19 +365,12 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
     def save_image(self, result, name_append="result"):
         radar_image = result
 
-        # decode with vae
-        radar_image = (
-            self.vae.decode(radar_image / NORMALIZATION_FACTOR)
-            .sample.cpu()
-            .numpy()[0, 0, :, :]
-        )
-
         fname = (
             self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
         )
 
         plt.figure(figsize=(20, 20))
-        plt.imshow(radar_image, vmin=-0.5, vmax=2)
+        plt.imshow(radar_image[0, 0, 0, :, :], vmin=-0.5, vmax=2)
         plt.colorbar()
 
         plt.savefig(fname, bbox_inches="tight", pad_inches=0)

@@ -59,7 +59,7 @@ if __name__ == "__main__":
     #model = MeteoLibrePLModelGrid.load_from_checkpoint("models/last.ckpt")
 
     # model checkpoint 
-    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_dit_vae3d_v0/")
+    callback = ModelCheckpoint(every_n_epochs=3, save_last=True, dirpath="models/finetune_dit_vae3d_v0/", save_weights_only=True)
 
     trainer = pl.Trainer(
         max_time={"hours": 30},
