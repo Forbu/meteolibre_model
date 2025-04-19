@@ -24,7 +24,7 @@ from meteolibre_model.model_3Dtransformer import TransfomerFilmModel
 from heavyball import ForeachSOAP
 
 
-NORMALIZATION_FACTOR = 0.769
+NORMALIZATION_FACTOR = 1. #0.769
 
 
 class MeteoLibrePLModelGrid(pl.LightningModule):
@@ -38,10 +38,10 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
     def __init__(
         self,
-        condition_size,
+        condition_size=3,
         learning_rate=1e-3,
         nb_back=5,
-        nb_future=4,
+        nb_future=8,
         shape_image=256,
         test_dataloader=None,
         dir_save="./",
@@ -63,6 +63,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             4,
             4,
             condition_size,
+            nb_temporals=(nb_back + nb_future -1) // 4 + 1,
         )
         self.learning_rate = learning_rate
         self.criterion = nn.MSELoss(reduction="none")  # Rectified Flow uses MSE loss
@@ -100,27 +101,34 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
         return self.model(x_image, x_scalar)
 
-    def getting_target_input_after_vae(self, batch):
+    def getting_target_input_after_vae(self, batch, only_input=False):
         with torch.no_grad():
             target_radar_frames = batch[
                 "target_radar_frames"
             ]  # (batch_size, 256, 256, nb_future)
+
+            input_radar_frames = batch[
+                "input_radar_frames"
+            ]  # (batch_size, 256, 256, nb_back)$
+
             target_radar_frames = target_radar_frames.unsqueeze(1)  # (b c h w t)
             target_radar_frames = einops.rearrange(
                 target_radar_frames, "b c h w t -> b c t h w"
             )
 
-            input_radar_frames = batch[
-                "input_radar_frames"
-            ]  # (batch_size, 256, 256, nb_back)
+
             input_radar_frames = input_radar_frames.unsqueeze(1)
             input_radar_frames = einops.rearrange(
                 input_radar_frames, "b c h w t -> b c t h w"
             )
 
-            full_frame = torch.cat([input_radar_frames, target_radar_frames], dim=2)
 
-            full_frame = self.vae.encode(full_frame).latent_dist.sample()
+            full_frame_nonlatent = torch.cat([input_radar_frames, target_radar_frames], dim=2)
+
+
+            full_frame = full_frame_nonlatent[:, :, :(self.nb_back + self.nb_future), :, :]
+
+            full_frame = self.vae.encode(full_frame).latent_dist.mean
 
             full_frame = full_frame * NORMALIZATION_FACTOR
 
@@ -130,6 +138,20 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             # detach to avoid backpropagation
             target_radar_frames = target_radar_frames.detach()
             input_radar_frames = input_radar_frames.detach()
+
+            if only_input:
+                full_frame = full_frame_nonlatent[:, :, :(self.nb_back), :, :]
+
+                full_frame = self.vae.encode(full_frame).latent_dist.mean
+
+                full_frame = full_frame * NORMALIZATION_FACTOR
+
+                input_radar_frames = full_frame[:, :, : self.nb_back_vae, :, :]
+
+                # detach to avoid backpropagation
+                input_radar_frames = input_radar_frames.detach()
+
+            return target_radar_frames, input_radar_frames
 
         return target_radar_frames, input_radar_frames
 
@@ -237,7 +259,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         return optimizer
 
     @torch.no_grad()
-    def generate_one(self, nb_batch=1, nb_step=100):
+    def generate_one(self, nb_batch=1, nb_step=100, null_value=False):
         # Assuming batch is a dictionary returned by TFDataset
         # we first generate a random noise
         for batch in self.test_dataloader:
@@ -248,9 +270,11 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         batch_size = batch["target_radar_frames"].shape[0]
 
-        target_radar_frames, input_radar_frames = self.getting_target_input_after_vae(
-            batch
-        )
+        # just to check create a noise value
+        if null_value:
+            batch["target_radar_frames"][:, :, :, 1:] = 0.0
+
+        target_radar_frames, input_radar_frames = self.getting_target_input_after_vae(batch, only_input=True)
 
         tmp_noise = self.init_prior(
             target_radar_frames.shape[0], target_radar_frames.shape

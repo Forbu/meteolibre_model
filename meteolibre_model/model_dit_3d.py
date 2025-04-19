@@ -249,6 +249,7 @@ class DiT(nn.Module):
         """
         batch_size = x.shape[0]
 
+
         x = einops.rearrange(x, "b n c h w -> (b c) n h w")
 
         x = (
