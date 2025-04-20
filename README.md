@@ -22,15 +22,26 @@ MeteoLibre Model is an open-source project dedicated to creating accessible and 
 
 The MeteoLibre Model project is driven by the idea of democratizing weather forecasting. By leveraging open data sources and modern machine learning techniques, we aim to develop models that are both accurate and accessible to researchers, developers, and weather enthusiasts. Our primary goal is to forecast weather conditions in France using only weather and radar station inputs, offering a transparent and customizable alternative to proprietary weather services.
 
+## Technologies
+
+This project leverages the following key technologies:
+
+*   **PyTorch:** A deep learning framework used for building and training the models.
+*   **PyTorch Lightning:** A lightweight PyTorch wrapper for high-performance AI research, simplifying training loops and boilerplate.
+*   **Diffusers:** A library from Hugging Face for state-of-the-art diffusion models.
+*   **Other Libraries:** Includes `timm`, `wandb`, `datasets`, `h5py`, `pyproj`, `pandas`, `matplotlib`, `pyarrow`, `imageio`, `einops`, `heavyball`, and `safetensors` for data handling, visualization, and utility functions.
+
 ## Model Architecture
 
-The project explores various model architectures to achieve optimal forecasting performance:
+The main deep learning architecture is a combinaison of 3D VAE and temporal DiT diffusion transformer :
+
+![Learningpipeline](images/fullpipeline.png)
+
+Various model architectures have been explore to achieve optimal forecasting performance:
 
 *   **UNET:** Used in early experiments, providing a baseline for image-based weather prediction.
 *   **DiT (Diffusion Transformer):** A diffusion-based model that has shown promising results in generating high-quality weather forecasts.
 *   **2D and 3D Transformers:** Explored for capturing spatial and temporal dependencies in weather data.
-
-![Meteo model](images/model.png)
 
 The architecture focuses on forecasting the evolution of radar images and incorporating ground station data to enrich the feature space.
 
@@ -41,6 +52,7 @@ The model utilizes data from multiple sources:
 *   **Weather Stations:** Provide ground-level weather measurements such as temperature, humidity, wind speed, and pressure.
 *   **Radar Stations:** Offer real-time radar imagery, capturing precipitation patterns and intensity.
 *   **Other Data Sources:** Includes topology data and ground type information from sources like IGN (Institut Géographique National).
+*   **OpenClimateFix data** Include radar images from UK and eumetsat data.
 
 ![Data](images/data_type.png)
 
@@ -72,6 +84,15 @@ Evaluation metrics include visual inspection of forecast accuracy and quantitati
 *   Adding ground station input/output to enrich the feature space. **DONE**
 *   Using DiT architecture for improved diffusion results on the UK dataset. **Achieved**
 *   DiT architecture with local modifications to reduce compute complexity. **Implemented**
+
+## First results
+
+On the UK radar image it seems that the pipeline 3D VAE encoder -> DiT -> 3D VAE decoder give very good results.
+Here a gif of the target radar image and the forecast / prediction image :
+
+
+<img src="images/result_gif_radar_epoch_0.gif" alt="drawing" width="200"/>
+<img src="images/target_gif_radar_epoch_0.gif" alt="drawingv2" width="200"/>
 
 ## Roadmap
 
