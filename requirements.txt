@@ -5,7 +5,7 @@ matplotlib
 pyarrow
 lightning
 datasets
-#"huggingface_hub[cli]"
+huggingface_hub[cli]
 tensorflow-cpu
 timm
 wandb
