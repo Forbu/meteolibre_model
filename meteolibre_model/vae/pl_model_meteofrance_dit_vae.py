@@ -28,7 +28,7 @@ from timm.models.vision_transformer import PatchEmbed
 from dit_ml.dit import DiT
 
 
-class VAEMeteoLibrePLModelGrid(pl.LightningModule):
+class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
     """
     PyTorch Lightning module for the MeteoLibre model.
 
@@ -46,11 +46,7 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         Initialize the MeteoLibrePLModel.
 
         Args:
-            input_channels_ground (int): Number of input channels for the ground station image.
-            condition_size (int): Size of the conditioning vector.
-            learning_rate (float, optional): Learning rate for the optimizer. Defaults to 1e-3.
-            nb_back (int, optional): Number of past frames to use as input. Defaults to 3.
-            nb_future (int, optional): Number of future frames to predict. Defaults to 1.
+            TODO later
         """
         super().__init__()
         self.model = AutoencoderKL(in_channels=5, out_channels=5, latent_channels=64)
@@ -136,19 +132,27 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         Training step for the PyTorch Lightning module.
         """
 
-        radar_data = batch["radar_data"]
-        groundstation_data = batch["groundstation_data"]
+        radar_data = batch["radar_back"].unsqueeze(-1)
+        groundstation_data = batch["groundstation_back"]
+
+        # little correction
+        groundstation_data = torch.where(
+            groundstation_data == -100, -1, groundstation_data
+        )
 
         # mask radar
         mask_radar = torch.ones_like(radar_data)
-        mask_groundstation = groundstation_data != -1
+        mask_groundstation = groundstation_data != -100
 
         # concat the two elements
-        x_image = torch.cat((radar_data, groundstation_data), dim=1)
-        x_mask = torch.cat((mask_radar, mask_groundstation), dim=1)
+        x_image = torch.cat((radar_data, groundstation_data), dim=-1)
+        x_mask = torch.cat((mask_radar, mask_groundstation), dim=-1)
+
+        x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
+        x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
-        final_image, _ = self(x_image)
+        final_image, _ = self(x_image, x_mask)
 
         reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
         reconstruction_loss = reconstruction_loss * x_mask
@@ -177,9 +181,9 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # generate a random (nb_batch, 1, 256, 256) tensor
         for batch in self.test_dataloader:
             break
-            
+
         torch.parse_schema
-        
+
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
