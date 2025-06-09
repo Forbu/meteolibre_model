@@ -75,6 +75,8 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
             num_heads=8,
         )
 
+        self.final_layer = nn.Linear(128, 2 * 2 * 64, bias=True)
+
         self.learning_rate = learning_rate
         self.test_dataloader = test_dataloader
         self.beta = beta
@@ -114,43 +116,47 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # pass through DiT decoder
         dit_decoded_latent = self.dit_decoder(dit_encoded_latent)
 
+        decoder_latents = einops.rearrange(
+            dit_decoded_latent, "b (t nb_patch) c -> (b t) nb_patch c", t=nb_frame
+        )
+
         # 3. unpatchify
+        decoder_latents = self.final_layer(
+            decoder_latents
+        )  # (N, T, patch_size ** 2 * out_channels)
+        decoder_latents = self.unpatchify(decoder_latents)
 
-
-        # decoder todo
-        
+        # decoder cnn anti
+        final_image = self.model.decode(decoder_latents).sample
 
         return final_image, (dit_encoded_latent)
 
     def training_step(self, batch, batch_idx):
         """
         Training step for the PyTorch Lightning module.
-
         """
-        x_image = batch["target_radar_frames"][:, :, :, [0, -1]]
 
-        # rearrange to (batch_size, 2, 256, 256)
-        # and then to (batch_size * 2, 1, 256, 256)
-        x_image = einops.rearrange(x_image, "b h w c -> (b c) h w")
-        x_image = x_image.unsqueeze(1).repeat(1, 3, 1, 1)
+        radar_data = batch["radar_data"]
+        groundstation_data = batch["groundstation_data"]
 
-        # Forward pass through the model
-        final_image, (latents_mean, latents_variance) = self(x_image)
+        # mask radar
+        mask_radar = torch.ones_like(radar_data)
+        mask_groundstation = groundstation_data != -1
 
-        reconstruction_loss = F.mse_loss(final_image, x_image)
+        # concat the two elements
+        x_image = torch.cat((radar_data, groundstation_data), dim=1)
+        x_mask = torch.cat((mask_radar, mask_groundstation), dim=1)
+
+        # forward pass
+        final_image, _ = self(x_image)
+
+        reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
+        reconstruction_loss = reconstruction_loss * x_mask
+        reconstruction_loss = reconstruction_loss.sum() / x_mask.sum()
 
         self.log("reconstruction_loss", reconstruction_loss)
 
-        kl_loss = torch.mean(
-            -0.5
-            * torch.sum(
-                1 + latents_variance - latents_mean**2 - latents_variance.exp(), dim=1
-            ),
-        )
-
-        self.log("kl_loss", kl_loss)
-
-        loss = reconstruction_loss + self.beta * kl_loss
+        loss = reconstruction_loss
 
         return loss
 
@@ -171,25 +177,15 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         # generate a random (nb_batch, 1, 256, 256) tensor
         for batch in self.test_dataloader:
             break
-
-        x_image = batch["target_radar_frames"][:, :, :, [0]]
-        x_image = x_image.permute(0, 3, 1, 2)
-        x_image = x_image.to(self.device).repeat(1, 3, 1, 1)
-
-        # Forward pass through the model
-        final_image, _ = self(x_image)
-
-        return final_image.permute(0, 2, 3, 1), x_image.permute(0, 2, 3, 1)
-
+            
+        torch.parse_schema
+        
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
         self.eval()
 
         result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
-
-        self.save_image(result[0, :, :, 0].cpu().numpy(), name_append="result")
-        self.save_image(x_image_future[0, :, :, 0].cpu().numpy(), name_append="future")
 
         self.train()
 
@@ -211,3 +207,18 @@ class VAEMeteoLibrePLModelGrid(pl.LightningModule):
         self.logger.log_image(
             key=name_append, images=[wandb.Image(fname)], caption=[name_append]
         )
+
+    def unpatchify(self, x):
+        """
+        x: (N, T, patch_size**2 * C)
+        imgs: (N, H, W, C)
+        """
+        c = self.out_channels
+        p = self.x_embedder.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum("nhwpqc->nchpwq", x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
