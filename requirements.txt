@@ -14,3 +14,4 @@ diffusers
 einops
 heavyball
 safetensors
+dit_ml
