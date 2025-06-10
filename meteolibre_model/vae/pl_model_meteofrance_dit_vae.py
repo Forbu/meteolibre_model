@@ -38,9 +38,12 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
     def __init__(
         self,
         learning_rate=1e-6,
-        beta=0.000005,
         test_dataloader=None,
         dir_save="../",
+        input_channels=5,
+        output_channels=5,
+        latent_dim=64,
+        coefficient_reg=0.1,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -49,10 +52,39 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             TODO later
         """
         super().__init__()
-        self.model = AutoencoderKL(in_channels=5, out_channels=5, latent_channels=64)
+
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        self.latent_dim = latent_dim
+        self.coefficient_reg = coefficient_reg
+        self.learning_rate = learning_rate
+        self.patch_size = 2
+
+        self.model = AutoencoderKL(
+            in_channels=input_channels,
+            out_channels=output_channels,
+            latent_channels=latent_dim,
+            act_fn="silu",
+            block_out_channels=[128 // 4, 256 // 4, 512 // 4, 512 // 4],
+            down_block_types=[
+                "DownEncoderBlock2D",
+                "DownEncoderBlock2D",
+                "DownEncoderBlock2D",
+                "DownEncoderBlock2D",
+            ],
+            layers_per_block=2,
+            sample_size=256,
+            scaling_factor=0.18215,
+            up_block_types=[
+                "UpDecoderBlock2D",
+                "UpDecoderBlock2D",
+                "UpDecoderBlock2D",
+                "UpDecoderBlock2D",
+            ],
+        )
 
         self.patch_embedder = PatchEmbed(
-            img_size=32, patch_size=2, in_chans=64, embed_dim=128
+            img_size=32, patch_size=2, in_chans=latent_dim, embed_dim=128
         )
 
         self.dit_encoder = DiT(
@@ -71,7 +103,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             num_heads=8,
         )
 
-        self.final_layer = nn.Linear(128, 2 * 2 * 64, bias=True)
+        self.final_layer = nn.Linear(128, 2 * 2 * latent_dim, bias=True)
 
         self.learning_rate = learning_rate
         self.test_dataloader = test_dataloader
@@ -106,24 +138,31 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             latents_sample_patch, "(b t) nb_patch c -> b (t nb_patch) c", t=nb_frame
         )
 
+        dummy_time = torch.zeros(
+            (latents_sample_patch.shape[0], 128),
+            device=latents_sample_patch.device,
+            dtype=torch.float32,
+        )
+
         # pass through DiT encoder
-        dit_encoded_latent = self.dit_encoder(latents_sample_patch)
+        dit_encoded_latent = self.dit_encoder(latents_sample_patch, dummy_time)
 
         # pass through DiT decoder
-        dit_decoded_latent = self.dit_decoder(dit_encoded_latent)
+        dit_decoded_latent = self.dit_decoder(dit_encoded_latent, dummy_time)
 
         decoder_latents = einops.rearrange(
             dit_decoded_latent, "b (t nb_patch) c -> (b t) nb_patch c", t=nb_frame
         )
 
         # 3. unpatchify
-        decoder_latents = self.final_layer(
+        decoder_latents_final = self.final_layer(
             decoder_latents
         )  # (N, T, patch_size ** 2 * out_channels)
-        decoder_latents = self.unpatchify(decoder_latents)
+
+        decoder_latents_unpatch = self.unpatchify(decoder_latents_final)
 
         # decoder cnn anti
-        final_image = self.model.decode(decoder_latents).sample
+        final_image = self.model.decode(decoder_latents_unpatch).sample
 
         return final_image, (dit_encoded_latent)
 
@@ -152,7 +191,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
-        final_image, _ = self(x_image, x_mask)
+        final_image, latent = self(x_image, x_mask)
 
         reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
         reconstruction_loss = reconstruction_loss * x_mask
@@ -160,7 +199,13 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.log("reconstruction_loss", reconstruction_loss)
 
-        loss = reconstruction_loss
+        regularization_loss = F.mse_loss(
+            latent, torch.zeros_like(latent), reduction="mean"
+        )
+
+        self.log("regularization_loss", regularization_loss)
+
+        loss = reconstruction_loss + self.coefficient_reg * regularization_loss
 
         return loss
 
@@ -217,8 +262,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x: (N, T, patch_size**2 * C)
         imgs: (N, H, W, C)
         """
-        c = self.out_channels
-        p = self.x_embedder.patch_size[0]
+        c = self.latent_dim
+        p = self.patch_size
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
 
