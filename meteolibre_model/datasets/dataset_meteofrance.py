@@ -48,7 +48,13 @@ def read_record(record):
         print(
             f"Error loading data from {radar_back_file}, {radar_back_future}, {gs_future}, {gs_back}, {height}: {e}"
         )
-        raise("Error")
+        raise ("Error")
+
+    gs_back_data = np.where(gs_back_data == -100, -1, gs_back_data)
+    gs_back_data = np.where(np.isnan(gs_back_data), -1, gs_back_data)
+
+    gs_future_data = np.where(gs_future_data == -100, -1, gs_future_data)
+    gs_future_data = np.where(np.isnan(gs_future_data), -1, gs_future_data)
 
     return {
         "radar_back": radar_back_data,  # The NumPy array itself

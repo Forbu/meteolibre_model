@@ -43,7 +43,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         input_channels=5,
         output_channels=5,
         latent_dim=64,
-        coefficient_reg=0.1,
+        coefficient_reg=0.01,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -107,7 +107,6 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.learning_rate = learning_rate
         self.test_dataloader = test_dataloader
-        self.beta = beta
 
         self.dir_save = dir_save
 
@@ -131,6 +130,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         latents_sample_patch = self.patch_embedder(
             latents_sample
         )  # size is (batch_size * nb_frame, H * W, embed_dim)
+
+
 
         # 2. pass though DiT
         # resize to (batch_size, H * W * nb_frame, embed_dim)
@@ -163,6 +164,11 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         # decoder cnn anti
         final_image = self.model.decode(decoder_latents_unpatch).sample
+
+        # reshape
+        final_image = einops.rearrange(
+            final_image, "(b t) c h w -> b t c h w", t=nb_frame
+        )
 
         return final_image, (dit_encoded_latent)
 
@@ -199,11 +205,16 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.log("reconstruction_loss", reconstruction_loss)
 
+
+
         regularization_loss = F.mse_loss(
             latent, torch.zeros_like(latent), reduction="mean"
         )
 
         self.log("regularization_loss", regularization_loss)
+
+        print("reconstruction_loss:", reconstruction_loss.item())
+        print("regularization_loss:", regularization_loss.item())
 
         loss = reconstruction_loss + self.coefficient_reg * regularization_loss
 
@@ -227,7 +238,32 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         for batch in self.test_dataloader:
             break
 
-        torch.parse_schema
+        
+        radar_data = batch["radar_back"].unsqueeze(-1)
+        groundstation_data = batch["groundstation_back"]
+
+        # little correction
+        groundstation_data = torch.where(
+            groundstation_data == -100, -1, groundstation_data
+        )
+
+        # mask radar
+        mask_radar = torch.ones_like(radar_data)
+        mask_groundstation = groundstation_data != -100
+
+        # concat the two elements
+        x_image = torch.cat((radar_data, groundstation_data), dim=-1)
+        x_mask = torch.cat((mask_radar, mask_groundstation), dim=-1)
+
+        x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
+        x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
+
+        # forward pass
+        final_image, latent = self(x_image, x_mask)
+
+        return final_image[:, 0, :, :, :].permute(0, 2, 3, 1), x_image[
+            :, 0, :, :, :
+        ].permute(0, 2, 3, 1)
 
     # on epoch end of training
     def on_train_epoch_end(self):
@@ -235,6 +271,12 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         self.eval()
 
         result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
+
+        self.save_image(result[0, :, :, 0], name_append="result")
+        self.save_image(x_image_future[0, :, :, 0], name_append="target")
+
+        self.save_gif(result, name_append="result_gif_vae")
+        self.save_gif(x_image_future, name_append="target_gif_vae")
 
         self.train()
 

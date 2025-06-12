@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=1,
+        batch_size=4,
         shuffle=True,
     )  # num_workers=8)
     val_dataloader = DataLoader(
@@ -49,12 +49,12 @@ if __name__ == "__main__":
     )
 
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
-    logger = WandbLogger(project="meteolibre_model_vae")
+    logger = WandbLogger(project="meteolibre_meteofrance_model_vae")
 
     trainer = pl.Trainer(
         max_time={"hours": 1},
         logger=logger,
-        accumulate_grad_batches=2,
+        accumulate_grad_batches=4,
         # fast_dev_run=True,
         # accelerator="cpu", # debug
         gradient_clip_val=1.0,
