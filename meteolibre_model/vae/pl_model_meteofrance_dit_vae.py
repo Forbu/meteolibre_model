@@ -138,7 +138,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         )
 
         dummy_time = torch.zeros(
-            (latents_sample_patch.shape[0], 128),
+            (latents_sample_patch.shape[0], self.latent_dim * 2),
             device=latents_sample_patch.device,
             dtype=torch.float32,
         )
