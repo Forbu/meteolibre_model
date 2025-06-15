@@ -52,7 +52,7 @@ if __name__ == "__main__":
     logger = WandbLogger(project="meteolibre_meteofrance_model_vae")
 
     trainer = pl.Trainer(
-        max_time={"hours": 1},
+        max_time={"hours": 4},
         logger=logger,
         accumulate_grad_batches=4,
         # fast_dev_run=True,
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     api = HfApi()
     api.upload_file(
         path_or_fileobj="diffusion_pytorch_model.safetensors",
-        path_in_repo="weights_vae/diffusion_pytorch_model.safetensors",
+        path_in_repo="weights_vae/model_meteofrance_vae.safetensors",
         repo_id="Forbu14/meteolibre",
         repo_type="model",
     )

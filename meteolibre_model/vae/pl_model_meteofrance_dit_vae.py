@@ -131,8 +131,6 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             latents_sample
         )  # size is (batch_size * nb_frame, H * W, embed_dim)
 
-
-
         # 2. pass though DiT
         # resize to (batch_size, H * W * nb_frame, embed_dim)
         latents_sample_patch = einops.rearrange(
@@ -205,8 +203,6 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.log("reconstruction_loss", reconstruction_loss)
 
-
-
         regularization_loss = F.mse_loss(
             latent, torch.zeros_like(latent), reduction="mean"
         )
@@ -238,7 +234,10 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         for batch in self.test_dataloader:
             break
 
-        
+        # convert everything to device
+        for key in batch.keys():
+            batch[key] = batch[key].to(self.device)
+
         radar_data = batch["radar_back"].unsqueeze(-1)
         groundstation_data = batch["groundstation_back"]
 
@@ -261,9 +260,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # forward pass
         final_image, latent = self(x_image, x_mask)
 
-        return final_image[:, 0, :, :, :].permute(0, 2, 3, 1), x_image[
-            :, 0, :, :, :
-        ].permute(0, 2, 3, 1)
+        return final_image, x_image
 
     # on epoch end of training
     def on_train_epoch_end(self):
@@ -272,8 +269,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
 
-        self.save_image(result[0, :, :, 0], name_append="result")
-        self.save_image(x_image_future[0, :, :, 0], name_append="target")
+        self.save_image(result[0, 0, 0, :, :], name_append="result")
+        self.save_image(x_image_future[0, 0, 0, :, :], name_append="target")
 
         self.save_gif(result, name_append="result_gif_vae")
         self.save_gif(x_image_future, name_append="target_gif_vae")
@@ -281,7 +278,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         self.train()
 
     def save_image(self, result, name_append="result"):
-        radar_image = result
+        radar_image = result.cpu().detach().numpy()  # (H, W)
 
         fname = (
             self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
@@ -313,3 +310,71 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x = torch.einsum("nhwpqc->nchpwq", x)
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
+
+    def save_gif(self, result, name_append="result", duration=10):
+        nb_frame = result.shape[1]
+
+        file_name_list = []
+
+        for i in range(nb_frame):
+            fname = (
+                self.dir_save
+                + f"data/{name_append}_radar_epoch_{self.current_epoch}_{i}.png"
+            )
+
+            radar_image = result[0, i, 0, :, :].cpu().numpy()
+
+            plt.figure(figsize=(20, 20))
+            plt.imshow(radar_image, vmin=-1, vmax=2)
+            plt.colorbar()
+
+            plt.savefig(fname, bbox_inches="tight", pad_inches=0)
+            plt.close()
+
+            file_name_list.append(fname)
+
+        create_gif_pillow(
+            image_paths=file_name_list,
+            output_path=self.dir_save
+            + f"data/{name_append}_radar_epoch_{self.current_epoch}.gif",
+            duration=duration,
+        )
+
+
+def create_gif_pillow(image_paths, output_path, duration=100):
+    """
+    Creates a GIF from a list of image paths using Pillow.
+
+    Args:
+      image_paths: A list of strings, where each string is the path to an image file.
+      output_path: The path where the GIF will be saved (e.g., 'output.gif').
+      duration: The duration (in milliseconds) to display each frame in the GIF.
+    """
+    images = []
+    for path in image_paths:
+        try:
+            img = Image.open(path)
+            images.append(img)
+        except FileNotFoundError:
+            print(f"Error: Image not found at {path}")
+            return
+
+    if images:
+        first_frame = images[0]
+        remaining_frames = images[1:]
+
+        first_frame.save(
+            output_path,
+            save_all=True,
+            append_images=remaining_frames,
+            duration=duration,
+            loop=0,  # 0 means loop indefinitely
+        )
+        print(f"GIF created successfully at {output_path}")
+
+    # remove the png images after creating the gif
+    for path in image_paths:
+        os.remove(path)
+
+    else:
+        print("No valid images found to create GIF.")
