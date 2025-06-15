@@ -37,12 +37,12 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
     def __init__(
         self,
-        learning_rate=1e-6,
+        learning_rate=1e-3,
         test_dataloader=None,
         dir_save="../",
         input_channels=5,
         output_channels=5,
-        latent_dim=64,
+        latent_dim=16,
         coefficient_reg=0.01,
     ):
         """
@@ -84,12 +84,12 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         )
 
         self.patch_embedder = PatchEmbed(
-            img_size=32, patch_size=2, in_chans=latent_dim, embed_dim=128
+            img_size=32, patch_size=2, in_chans=latent_dim, embed_dim=latent_dim*2
         )
 
         self.dit_encoder = DiT(
             num_patches=32 * 32 // 4,  # if 2d with flatten size
-            hidden_size=128,
+            hidden_size=latent_dim*2,
             depth=3,
             num_heads=8,
             causal_block=True,
@@ -98,12 +98,12 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.dit_decoder = DiT(
             num_patches=32 * 32 // 4,  # if 2d with flatten size
-            hidden_size=128,
+            hidden_size=latent_dim*2,
             depth=3,
             num_heads=8,
         )
 
-        self.final_layer = nn.Linear(128, 2 * 2 * latent_dim, bias=True)
+        self.final_layer = nn.Linear(latent_dim*2, 2 * 2 * latent_dim, bias=True)
 
         self.learning_rate = learning_rate
         self.test_dataloader = test_dataloader
