@@ -42,7 +42,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         dir_save="../",
         input_channels=5,
         output_channels=5,
-        latent_dim=16,
+        latent_dim=32,
         coefficient_reg=0.01,
     ):
         """
@@ -185,7 +185,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         # mask radar
         mask_radar = torch.ones_like(radar_data)
-        mask_groundstation = groundstation_data != -100
+        mask_groundstation = groundstation_data != -1
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
@@ -248,7 +248,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         # mask radar
         mask_radar = torch.ones_like(radar_data)
-        mask_groundstation = groundstation_data != -100
+        mask_groundstation = groundstation_data != -1
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
