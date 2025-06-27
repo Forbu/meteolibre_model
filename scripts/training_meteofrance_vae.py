@@ -9,6 +9,7 @@ from huggingface_hub import HfApi
 
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 from torch.utils.data import DataLoader
 
@@ -49,6 +50,13 @@ if __name__ == "__main__":
         test_dataloader=val_dataloader,
     )
 
+    callback = ModelCheckpoint(
+        every_n_epochs=3,
+        save_last=True,
+        dirpath="models/meteolibre_vae_rope3d/",
+        save_weights_only=True,
+    )
+
     # logger = TensorBoardLogger("tb_logs/", name="g2pt_grid")
     logger = WandbLogger(project="meteolibre_meteofrance_model_vae")
 
@@ -58,6 +66,7 @@ if __name__ == "__main__":
         accumulate_grad_batches=4,
         # fast_dev_run=True,
         # accelerator="cpu", # debug
+        callbacks=[callback],
         gradient_clip_val=1.0,
         log_every_n_steps=5,
         enable_checkpointing=False,
