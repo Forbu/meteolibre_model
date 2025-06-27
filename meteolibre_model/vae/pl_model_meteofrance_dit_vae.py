@@ -88,7 +88,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # )
 
         self.dit_encoder = DiT(
-            num_patches=32 * 32,  # if 2d with flatten size
+            num_patches=32 * 32 * 6,  # if 2d with flatten size
             hidden_size=latent_dim,
             depth=3,
             num_heads=2,
@@ -102,7 +102,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         )
 
         self.dit_decoder = DiT(
-            num_patches=32 * 32,  # if 2d with flatten size
+            num_patches=32 * 32 * 6,  # if 2d with flatten size
             hidden_size=latent_dim,
             depth=3,
             num_heads=2,
