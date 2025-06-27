@@ -94,6 +94,11 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             num_heads=2,
             causal_block=True,
             causal_block_size=32 * 32,
+            use_rope=True,
+            rope_dimension=3,
+            max_h=32,
+            max_w=32,
+            max_d=6,
         )
 
         self.dit_decoder = DiT(
@@ -101,10 +106,14 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             hidden_size=latent_dim,
             depth=3,
             num_heads=2,
+            use_rope=True,
+            rope_dimension=3,
+            max_h=32,
+            max_w=32,
+            max_d=6,
         )
 
         # self.final_layer = nn.Linear(latent_dim*2, 2 * 2 * latent_dim, bias=True)
-
         self.learning_rate = learning_rate
         self.test_dataloader = test_dataloader
 
