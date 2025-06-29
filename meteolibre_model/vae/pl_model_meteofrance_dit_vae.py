@@ -119,7 +119,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.dir_save = dir_save
 
-    def forward(self, x_image, mask_values):
+    def encode(self, x_image, mask_values):
         """
         Forward pass through the model.
 
@@ -157,8 +157,12 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # pass through DiT encoder
         dit_encoded_latent = self.dit_encoder(latents_sample_patch, dummy_time)
 
+        return dit_encoded_latent, dummy_time
+
+    def decode(self, z, dummy_time):
+
         # pass through DiT decoder
-        dit_decoded_latent = self.dit_decoder(dit_encoded_latent, dummy_time)
+        dit_decoded_latent = self.dit_decoder(z, dummy_time)
 
         decoder_latents = einops.rearrange(
             dit_decoded_latent, "b (t nb_patch) c -> (b t) nb_patch c", t=nb_frame
@@ -183,7 +187,22 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             final_image, "(b t) c h w -> b t c h w", t=nb_frame
         )
 
-        return final_image, (dit_encoded_latent)
+        return final_image
+
+    def forward(self, x_image, mask_values):
+        """
+        Forward pass through the model.
+
+        Args:
+            x_image (torch.Tensor): Input image tensor of size (b, nb_frame, c, h, w)
+
+        Returns:
+            torch.Tensor: Output tensor from the model.
+        """
+        z, dummy_time = self.encode( x_image, mask_values)
+        final_image = self.decode(z, dummy_time)
+
+        return final_image, (z)
 
     def training_step(self, batch, batch_idx):
         """
