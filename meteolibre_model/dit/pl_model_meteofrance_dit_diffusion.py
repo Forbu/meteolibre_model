@@ -232,11 +232,11 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # convert to device
         batch = {k: v.to(self.device) for k, v in batch.items()}
 
-        batch_size = batch["target_radar_frames"].shape[0]
+        batch_size = batch["radar_back"].shape[0]
 
         # just to check create a noise value
         if null_value:
-            batch["target_radar_frames"][:, :, :, 1:] = 0.0
+            batch["radar_back"][:, :, :, 1:] = 0.0
 
         target_radar_frames, input_radar_frames = self.getting_target_input_after_vae(
             batch, only_input=True
@@ -246,7 +246,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         for i in range(1, nb_step):
             # concat x_t with x_image_back and x_ground_station_image_previous
-            input_model = torch.cat([input_radar_frames, tmp_noise], dim=2)
+            input_model = torch.cat([input_radar_frames, tmp_noise], dim=1)
 
             t = i * 1.0 / nb_step
 
@@ -266,7 +266,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 noise = self.forward(input_model, x_scalar)
 
                 velocity = (
-                    1 / (t + 1e-4) * (tmp_noise - noise[:, :, self.nb_back_vae :, :, :])
+                    1 / (t + 1e-4) * (tmp_noise - noise[:, self.nb_back_vae :, :, :, :])
                 )
 
                 tmp_noise = tmp_noise + velocity * 1.0 / nb_step
