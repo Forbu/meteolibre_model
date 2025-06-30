@@ -45,7 +45,7 @@ class DiTCore(pl.LightningModule):
     """
 
     def __init__(
-        self, nb_back, nb_future, hidden_size=384, depth=12, num_heads=6, patch_size=2, out_channels=16
+        self, nb_back, nb_future, hidden_size=384, depth=12, num_heads=8, patch_size=2, out_channels=16
     ):
         super().__init__()
         self.nb_temporals = nb_back + nb_future
@@ -67,7 +67,7 @@ class DiTCore(pl.LightningModule):
             32,  # image size
             patch_size,  # patch size
             16,  # input channels
-            384,  # hidden size
+            hidden_size,  # hidden size
             bias=True,
         )
 
