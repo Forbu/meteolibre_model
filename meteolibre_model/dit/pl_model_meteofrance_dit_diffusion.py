@@ -16,6 +16,9 @@ import einops
 from torch.optim import optimizer
 
 import lightning.pytorch as pl
+from timm.models.vision_transformer import PatchEmbed
+
+from dit_ml.dit import DiT
 
 from heavyball import ForeachSOAP
 
@@ -45,6 +48,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         dir_save="./",
         loss_type="mse",
         parametrization="noisy",
+        pretrained_vae_weight=None,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -57,7 +61,10 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             nb_future (int, optional): Number of future frames to predict. Defaults to 1.
         """
         super().__init__()
-        self.model = None  # todo later
+
+        nb_time_step = nb_back + nb_future
+
+        self.model_core = None # todo later
 
         self.learning_rate = learning_rate
         self.criterion = nn.MSELoss(reduction="none")  # Rectified Flow uses MSE loss
@@ -87,7 +94,22 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        return self.model(x_image, x_scalar)
+        return self.model_core(x_image, x_scalar)
+
+    def unpatchify(self, x):
+        """
+        x: (N, T, patch_size**2 * C)
+        imgs: (N, H, W, C)
+        """
+        c = self.out_channels
+        p = self.x_embedder.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum("nhwpqc->nchpwq", x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
 
     def getting_target_input_after_vae(self, batch, only_input=False):
         with torch.no_grad():
@@ -228,7 +250,6 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 dim=1,
             )
 
-
             if self.parametrization == "noisy":
                 noise = self.forward(input_model, x_scalar)
 
@@ -245,7 +266,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
-        self.model.eval()
+        self.model_core.eval()
 
         with torch.no_grad():
             result, target_radar_frames, input_radar_frames = self.generate_one(
@@ -281,7 +302,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             for f in glob.glob(self.dir_save + "data/*.png"):
                 os.remove(f)
 
-        self.model.train()
+        self.model_core.train()
 
     def save_gif(self, result, name_append="result", duration=10):
         nb_frame = result.shape[2]
