@@ -45,7 +45,7 @@ class DiTCore(pl.LightningModule):
     """
 
     def __init__(
-        self, nb_back, nb_future, hidden_size=384, patch_size=2, out_channels=16
+        self, nb_back, nb_future, hidden_size=384, depth=12, num_heads=6, patch_size=2, out_channels=16
     ):
         super().__init__()
         self.nb_temporals = nb_back + nb_future
@@ -54,8 +54,8 @@ class DiTCore(pl.LightningModule):
         self.model_core = DiT(
             num_patches=16 * 16 * self.nb_temporals,  # if 2d with flatten size
             hidden_size=hidden_size,
-            depth=12,
-            num_heads=6,
+            depth=depth,
+            num_heads=num_heads,
             use_rope=True,
             rope_dimension=3,
             max_h=16,
