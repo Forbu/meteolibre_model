@@ -21,9 +21,7 @@ import wandb
 from PIL import Image
 
 from heavyball import ForeachSOAP
-
 from diffusers import AutoencoderKL
-from timm.models.vision_transformer import PatchEmbed
 
 from dit_ml.dit import DiT
 
