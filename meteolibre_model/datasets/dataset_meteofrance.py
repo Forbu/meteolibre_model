@@ -62,8 +62,8 @@ def read_record(record):
         "groundstation_future": gs_future_data,  # The NumPy array itself
         "groundstation_back": gs_back_data,  # The NumPy array itself
         "ground_height": height_data,  # The NumPy array itself
-        # "hour": hour,  # The scalar value
-        # "minutes": minutes,  # The scalar value
+        "hour": hour / 24.,  # The scalar value
+        "minute": minutes / 60.,  # The scalar value
         # "time_radar_back": time_radar_back,  # The scalar value
         # "datetime": datetime,  # The scalar value
         # "id": id,  # The scalar value

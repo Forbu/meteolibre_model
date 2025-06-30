@@ -29,6 +29,7 @@ def test_dit_core_forward_pass():
     out_channels = 16
     in_channels = 16  # must match PatchEmbed in_chans
     nb_temporals = 8
+    condition_size=4
 
     model = DiTCore(
         nb_temporals=nb_temporals,
@@ -36,6 +37,7 @@ def test_dit_core_forward_pass():
         patch_size=patch_size,
         out_channels=out_channels,
         in_channels=in_channels,
+        condition_size=condition_size
     )
 
     batch_size = 2
@@ -44,7 +46,7 @@ def test_dit_core_forward_pass():
     width = 32  # must match PatchEmbed img_size
 
     x = torch.randn(batch_size, in_channels, nb_temporals, height, width)
-    scalar_input = torch.randn(batch_size, hidden_size)
+    scalar_input = torch.randn(batch_size, condition_size)
 
     output = model(x, scalar_input)
 

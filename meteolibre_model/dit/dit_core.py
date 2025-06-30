@@ -45,7 +45,7 @@ class DiTCore(pl.LightningModule):
     """
 
     def __init__(
-        self, nb_temporals, hidden_size=384, depth=12, num_heads=8, patch_size=2, out_channels=16, in_channels=16
+        self, nb_temporals, hidden_size=384, depth=12, num_heads=8, patch_size=2, out_channels=16, in_channels=16, condition_size=3
     ):
         super().__init__()
         self.nb_temporals = nb_temporals
@@ -71,6 +71,13 @@ class DiTCore(pl.LightningModule):
             bias=True,
         )
 
+        # projection to hidden size
+        self.mlp = nn.Sequential(
+            nn.Linear(condition_size, hidden_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size, bias=True),
+        )
+
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
     def unpatchify(self, x):
@@ -92,21 +99,23 @@ class DiTCore(pl.LightningModule):
         """
         Forward pass of DiT.
             x: (N, C, nb_timestep, H, W) tensor of spatial inputs (images or latent representations of images)
-            scalar: (N, D) tensor of diffusion timesteps (or any other scalar input)
+            scalar: (N, condition_size) tensor of diffusion timesteps (or any other scalar input)
         """
-        x = einops.rearrange(x, "b n c h w -> (b c) n h w")
+        x_scalar = self.mlp(scalar_input)
+
+        x = einops.rearrange(x, "b c n h w -> (b c) n h w")
 
         x = self.x_embedder(x)
 
         # resize temporals
         x = einops.rearrange(x, "(b n) nb_seq d -> b (n nb_seq) d", n=self.nb_temporals)
 
-        x = self.model_core(x, scalar_input)
+        x = self.model_core(x, x_scalar)
 
         x = einops.rearrange(x, "b (n nb_seq) d -> (b n) nb_seq d", n=self.nb_temporals)
 
         x = self.final_layer(x)  # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)  # (N, out_channels, H, W)
 
-        x = einops.rearrange(x, "(b n) c h w -> b c n h w", n=self.nb_temporals)
+        x = einops.rearrange(x, "(b n) c h w -> b n c h w", n=self.nb_temporals)
         return x

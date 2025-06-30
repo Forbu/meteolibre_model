@@ -45,6 +45,7 @@ if __name__ == "__main__":
         train_dataset,
         batch_size=32,
         shuffle=True,
+        num_workers=8
     )  # num_workers=8)
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True

@@ -66,7 +66,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             self.nb_time_step,
             hidden_size=384,
             depth=12,
-            num_heads=8,
+            num_heads=6,
             patch_size=2,
             out_channels=16,
             in_channels=16,
@@ -87,7 +87,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
 
         self.fn_loss = nn.MSELoss(reduction="none")
 
-        self.vae = VAEMeteoLibrePLModelDitVae()
+        self.vae = VAEMeteoLibrePLModelDitVae.load_from_checkpoint(pretrained_vae_weight)
 
     def forward(self, x_image, x_scalar):
         """
@@ -124,9 +124,9 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 z, "b (t h w) d -> b t d h w", t=self.nb_time_step, h=32, w=32
             )
 
-        return z[:, self.nb_back : (self.nb_back + self.nb_future), :, :, :], z[
+        return z[:, self.nb_back : (self.nb_back + self.nb_future), :, :, :].detach(), z[
             :, : self.nb_back, :, :, :
-        ]
+        ].detach()
 
     def init_prior(self, shape_target):
         return torch.randn((shape_target)).to(self.device)
@@ -184,7 +184,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_t = t * target_meteo_frames + (1 - t) * prior_image
 
         # concat x_t with x_image_back and x_ground_station_image_previous
-        input_model = torch.cat([input_meteo_frames, x_t], dim=2)
+        input_model = torch.cat([input_meteo_frames, x_t], dim=1)
 
         if self.parametrization == "noisy":
             # prediction the noise
@@ -201,7 +201,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             raise ValueError("parametrization not handled")
 
         # Loss is MSE between predicted and target velocity fields
-        loss = self.fn_loss(pred[:, :, self.nb_back_vae :, :, :], target)
+        loss = self.fn_loss(pred[:, self.nb_back :, :, :, :], target)
         loss = w_t * loss  # ponderate loss
 
         loss = loss.mean()
