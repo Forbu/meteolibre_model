@@ -21,6 +21,8 @@ import torch
 
 torch.set_float32_matmul_precision("medium")
 
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 def init_dataset():
     dataset = MeteoLibreDataset(directory="/teamspace/studios/this_studio/hf_dataset/")
@@ -50,6 +52,8 @@ if __name__ == "__main__":
         test_dataloader=val_dataloader,
     )
 
+    model.compile()
+
     callback = ModelCheckpoint(
         every_n_epochs=3,
         save_last=True,
@@ -69,7 +73,7 @@ if __name__ == "__main__":
         callbacks=[callback],
         gradient_clip_val=1.0,
         log_every_n_steps=5,
-        enable_checkpointing=False,
+        enable_checkpointing=True,
     )  # fast_dev_run=True for quick debugging
 
     trainer.fit(
@@ -87,7 +91,7 @@ if __name__ == "__main__":
     api = HfApi()
     api.upload_file(
         path_or_fileobj="diffusion_pytorch_model.safetensors",
-        path_in_repo="weights_vae/model_meteofrance_vae.safetensors",
+        path_in_repo="weights_vae/model_meteofrance_rope_vae.safetensors",
         repo_id="Forbu14/meteolibre",
         repo_type="model",
     )

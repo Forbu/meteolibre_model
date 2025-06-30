@@ -157,9 +157,9 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # pass through DiT encoder
         dit_encoded_latent = self.dit_encoder(latents_sample_patch, dummy_time)
 
-        return dit_encoded_latent, dummy_time
+        return dit_encoded_latent, dummy_time, nb_frame
 
-    def decode(self, z, dummy_time):
+    def decode(self, z, dummy_time, nb_frame):
 
         # pass through DiT decoder
         dit_decoded_latent = self.dit_decoder(z, dummy_time)
@@ -199,8 +199,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        z, dummy_time = self.encode( x_image, mask_values)
-        final_image = self.decode(z, dummy_time)
+        z, dummy_time, nb_frame = self.encode( x_image, mask_values)
+        final_image = self.decode(z, dummy_time, nb_frame)
 
         return final_image, (z)
 
