@@ -24,23 +24,22 @@ def test_dit_core_forward_pass():
     """
     Tests the forward pass of the DiTCore model, checking the output shape.
     """
-    nb_back = 4
-    nb_future = 4
     hidden_size = 32
     patch_size = 2
     out_channels = 16
+    in_channels = 16  # must match PatchEmbed in_chans
+    nb_temporals = 8
 
     model = DiTCore(
-        nb_back=nb_back,
-        nb_future=nb_future,
+        nb_temporals=nb_temporals,
         hidden_size=hidden_size,
         patch_size=patch_size,
         out_channels=out_channels,
+        in_channels=in_channels,
     )
 
     batch_size = 2
-    in_channels = 16  # must match PatchEmbed in_chans
-    nb_temporals = nb_back + nb_future
+
     height = 32  # must match PatchEmbed img_size
     width = 32  # must match PatchEmbed img_size
 
@@ -57,7 +56,7 @@ def test_unpatchify():
     """
     Tests the unpatchify method to ensure it correctly reconstructs the image.
     """
-    model = DiTCore(nb_back=4, nb_future=4)
+    model = DiTCore(nb_temporals=8)
 
     N = 8  # batch_size * nb_temporals
     T = 256  # h * w (16*16)

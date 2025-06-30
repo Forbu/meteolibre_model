@@ -45,14 +45,14 @@ class DiTCore(pl.LightningModule):
     """
 
     def __init__(
-        self, nb_back, nb_future, hidden_size=384, depth=12, num_heads=8, patch_size=2, out_channels=16
+        self, nb_temporals, hidden_size=384, depth=12, num_heads=8, patch_size=2, out_channels=16, in_channels=16
     ):
         super().__init__()
-        self.nb_temporals = nb_back + nb_future
+        self.nb_temporals = nb_temporals
         self.out_channels = out_channels
 
         self.model_core = DiT(
-            num_patches=16 * 16 * self.nb_temporals,  # if 2d with flatten size
+            num_patches=16 * 16 * nb_temporals,  # if 2d with flatten size
             hidden_size=hidden_size,
             depth=depth,
             num_heads=num_heads,
@@ -60,13 +60,13 @@ class DiTCore(pl.LightningModule):
             rope_dimension=3,
             max_h=16,
             max_w=16,
-            max_d=self.nb_temporals,
+            max_d=nb_temporals,
         )
 
         self.x_embedder = PatchEmbed(
             32,  # image size
             patch_size,  # patch size
-            16,  # input channels
+            in_channels,  # input channels
             hidden_size,  # hidden size
             bias=True,
         )

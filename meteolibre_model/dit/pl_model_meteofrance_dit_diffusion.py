@@ -18,12 +18,10 @@ from torch.optim import optimizer
 import lightning.pytorch as pl
 from timm.models.vision_transformer import PatchEmbed
 
-from dit_ml.dit import DiT
-
 from heavyball import ForeachSOAP
 
 from meteolibre_model.vae.pl_model_meteofrance_dit_vae import VAEMeteoLibrePLModelDitVae
-
+from meteolibre_model.dit.dit_core import DiTCore
 
 NORMALIZATION_FACTOR = 1.0  # 0.769
 
@@ -62,9 +60,17 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
         super().__init__()
 
-        nb_time_step = nb_back + nb_future
+        self.nb_time_step = nb_back + nb_future
 
-        self.model_core = None # todo later
+        self.model_core = DiTCore(
+            self.nb_time_step,
+            hidden_size=384,
+            depth=12,
+            num_heads=8,
+            patch_size=2,
+            out_channels=16,
+            in_channels=16,
+        )
 
         self.learning_rate = learning_rate
         self.criterion = nn.MSELoss(reduction="none")  # Rectified Flow uses MSE loss
@@ -96,25 +102,31 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         """
         return self.model_core(x_image, x_scalar)
 
-    def unpatchify(self, x):
-        """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
-        """
-        c = self.out_channels
-        p = self.x_embedder.patch_size[0]
-        h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
-
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-        x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
-        return imgs
-
-    def getting_target_input_after_vae(self, batch, only_input=False):
+    def getting_target_input_after_vae(self, batch):
         with torch.no_grad():
-            pass
-        return target_meteo_frames, input_meteo_frames
+            radar_data = batch["radar_back"].unsqueeze(-1)
+            groundstation_data = batch["groundstation_back"]
+
+            # little correction
+            groundstation_data = torch.where(
+                groundstation_data == -100, -1, groundstation_data
+            )
+
+            # concat the two elements
+            x_image = torch.cat((radar_data, groundstation_data), dim=-1)
+            x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
+
+            z, dummy_time, nb_frame = self.vae.encode(
+                x_image
+            )  # z is of size (b (t nb_patch) c)
+
+            z = einops.rearrange(
+                z, "b (t h w) d -> b t d h w", t=self.nb_time_step, h=32, w=32
+            )
+
+        return z[:, self.nb_back : (self.nb_back + self.nb_future), :, :, :], z[
+            :, : self.nb_back, :, :, :
+        ]
 
     def init_prior(self, shape_target):
         return torch.randn((shape_target)).to(self.device)
@@ -146,18 +158,18 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         # Assuming batch is a dictionary returned by TFDataset
         # and contains 'back_0', 'future_0', 'hour' keys
 
-        target_radar_frames, input_radar_frames = self.getting_target_input_after_vae(
+        target_meteo_frames, input_meteo_frames = self.getting_target_input_after_vae(
             batch
         )
 
         # Prior sample (simple Gaussian noise) - you can refine this prior
-        prior_image = self.init_prior(target_radar_frames.shape)
+        prior_image = self.init_prior(target_meteo_frames.shape)
 
         # Time variable for Rectified Flow - sample uniformly
         t = (
-            torch.rand(target_radar_frames.shape[0], 1, 1, 1, 1)
-            .type_as(target_radar_frames)
-            .to(target_radar_frames.device)
+            torch.rand(target_meteo_frames.shape[0], 1, 1, 1, 1)
+            .type_as(target_meteo_frames)
+            .to(target_meteo_frames.device)
         )  # (B, 1)
 
         # we create a scalar value to condition the model on time stamp
@@ -169,10 +181,10 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
         x_scalar = torch.cat([x_hour, x_minute, t[:, :, 0, 0, 0]], dim=1)
 
         # Interpolate between prior and data to get x_t
-        x_t = t * target_radar_frames + (1 - t) * prior_image
+        x_t = t * target_meteo_frames + (1 - t) * prior_image
 
         # concat x_t with x_image_back and x_ground_station_image_previous
-        input_model = torch.cat([input_radar_frames, x_t], dim=2)
+        input_model = torch.cat([input_meteo_frames, x_t], dim=2)
 
         if self.parametrization == "noisy":
             # prediction the noise

@@ -117,7 +117,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         self.dir_save = dir_save
 
-    def encode(self, x_image, mask_values):
+    def encode(self, x_image):
         """
         Forward pass through the model.
 
@@ -187,7 +187,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         return final_image
 
-    def forward(self, x_image, mask_values):
+    def forward(self, x_image):
         """
         Forward pass through the model.
 
@@ -197,7 +197,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        z, dummy_time, nb_frame = self.encode( x_image, mask_values)
+        z, dummy_time, nb_frame = self.encode( x_image)
         final_image = self.decode(z, dummy_time, nb_frame)
 
         return final_image, (z)
@@ -227,7 +227,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
-        final_image, latent = self(x_image, x_mask)
+        final_image, latent = self(x_image)
 
         reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
         reconstruction_loss = reconstruction_loss * x_mask
