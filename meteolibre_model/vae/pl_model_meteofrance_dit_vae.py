@@ -42,6 +42,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         output_channels=5,
         latent_dim=16,
         coefficient_reg=0.01,
+        nb_frames=6,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -57,6 +58,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         self.coefficient_reg = coefficient_reg
         self.learning_rate = learning_rate
         self.patch_size = 2
+        self.nb_frames = nb_frames
 
         self.model = AutoencoderKL(
             in_channels=input_channels,
@@ -86,7 +88,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # )
 
         self.dit_encoder = DiT(
-            num_patches=32 * 32 * 6,  # if 2d with flatten size
+            num_patches=32 * 32 * nb_frames,  # if 2d with flatten size
             hidden_size=latent_dim,
             depth=3,
             num_heads=2,
@@ -96,11 +98,11 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             rope_dimension=3,
             max_h=32,
             max_w=32,
-            max_d=6,
+            max_d=nb_frames,
         )
 
         self.dit_decoder = DiT(
-            num_patches=32 * 32 * 6,  # if 2d with flatten size
+            num_patches=32 * 32 * nb_frames,  # if 2d with flatten size
             hidden_size=latent_dim,
             depth=3,
             num_heads=2,
@@ -108,7 +110,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             rope_dimension=3,
             max_h=32,
             max_w=32,
-            max_d=6,
+            max_d=nb_frames,
         )
 
         # self.final_layer = nn.Linear(latent_dim*2, 2 * 2 * latent_dim, bias=True)
@@ -143,7 +145,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # 2. pass though DiT
         # resize to (batch_size, H * W * nb_frame, embed_dim)
         latents_sample_patch = einops.rearrange(
-            latents_sample_patch, "(b t) nb_patch c -> b (t nb_patch) c", t=nb_frame
+            latents_sample_patch, "(b t) nb_patch c -> b (t nb_patch) c", t=self.nb_frames
         )
 
         dummy_time = torch.zeros(
@@ -155,15 +157,21 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # pass through DiT encoder
         dit_encoded_latent = self.dit_encoder(latents_sample_patch, dummy_time)
 
-        return dit_encoded_latent, dummy_time, nb_frame
+        return dit_encoded_latent
 
-    def decode(self, z, dummy_time, nb_frame):
+    def decode(self, z):
+
+        dummy_time = torch.zeros(
+            (z.shape[0], self.latent_dim),
+            device=z.device,
+            dtype=torch.float32,
+        )
 
         # pass through DiT decoder
         dit_decoded_latent = self.dit_decoder(z, dummy_time)
 
         decoder_latents = einops.rearrange(
-            dit_decoded_latent, "b (t nb_patch) c -> (b t) nb_patch c", t=nb_frame
+            dit_decoded_latent, "b (t nb_patch) c -> (b t) nb_patch c", t=self.nb_frames
         )
 
         decoder_latents_unpatch = einops.rearrange(
@@ -182,7 +190,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         # reshape
         final_image = einops.rearrange(
-            final_image, "(b t) c h w -> b t c h w", t=nb_frame
+            final_image, "(b t) c h w -> b t c h w", t=self.nb_frames
         )
 
         return final_image
@@ -197,8 +205,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        z, dummy_time, nb_frame = self.encode( x_image)
-        final_image = self.decode(z, dummy_time, nb_frame)
+        z = self.encode( x_image)
+        final_image = self.decode(z)
 
         return final_image, (z)
 

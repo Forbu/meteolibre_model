@@ -79,7 +79,7 @@ if __name__ == "__main__":
         max_time={"hours": 5},
         logger=logger,
         accumulate_grad_batches=2,
-        # fast_dev_run=True,
+        fast_dev_run=True,
         # accelerator="cpu", # debug
         callbacks=[callback],
         gradient_clip_val=1.0,
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     )  # Pass val_dataloader if you have validation step in model
 
     # Save the model in safetensors format
-    save_file(model.model.state_dict(), "diffusion_pytorch_model.safetensors")
+    save_file(model.model_core.state_dict(), "diffusion_pytorch_model.safetensors")
 
     # torch.save(model.model.state_dict(), "model_vae.pt")
 

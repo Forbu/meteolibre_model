@@ -116,7 +116,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             x_image = torch.cat((radar_data, groundstation_data), dim=-1)
             x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
 
-            z, dummy_time, nb_frame = self.vae.encode(
+            z = self.vae.encode(
                 x_image
             )  # z is of size (b (t nb_patch) c)
 
@@ -239,7 +239,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             batch["radar_back"][:, :, :, 1:] = 0.0
 
         target_radar_frames, input_radar_frames = self.getting_target_input_after_vae(
-            batch, only_input=True
+            batch
         )
 
         tmp_noise = self.init_prior(target_radar_frames.shape)
@@ -255,7 +255,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                     batch["hour"].clone().detach().float().unsqueeze(1),
                     batch["minute"].clone().detach().float().unsqueeze(1),
                     torch.ones(batch_size, 1)
-                    .type_as(batch["target_radar_frames"])
+                    .type_as(batch["radar_back"])
                     .to(self.device)
                     * t,
                 ],
@@ -266,7 +266,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 noise = self.forward(input_model, x_scalar)
 
                 velocity = (
-                    1 / (t + 1e-4) * (tmp_noise - noise[:, self.nb_back_vae :, :, :, :])
+                    1 / (t + 1e-4) * (tmp_noise - noise[:, self.nb_back :, :, :, :])
                 )
 
                 tmp_noise = tmp_noise + velocity * 1.0 / nb_step
@@ -285,21 +285,24 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
                 nb_batch=1, nb_step=100
             )
 
-            full_image_result = torch.cat([input_radar_frames, result], dim=2)
+            full_image_result = torch.cat([input_radar_frames, result], dim=1)
 
             full_image_target = torch.cat(
-                [input_radar_frames, target_radar_frames], dim=2
+                [input_radar_frames, target_radar_frames], dim=1
             )
 
+            full_image_result = einops.rearrange(full_image_result, "b t c h w -> b (t h w) c")
+            full_image_target = einops.rearrange(full_image_target, "b t c h w -> b (t h w) c")  
+
             radar_image_result = (
-                self.vae.decode(full_image_result / NORMALIZATION_FACTOR)
-                .sample.cpu()
+                self.vae.decode(full_image_result)
+                .cpu()
                 .numpy()
             )
 
             radar_image_target = (
-                self.vae.decode(full_image_target / NORMALIZATION_FACTOR)
-                .sample.cpu()
+                self.vae.decode(full_image_target)
+                .cpu()
                 .numpy()
             )
 
