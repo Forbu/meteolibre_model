@@ -330,7 +330,7 @@ class MeteoLibrePLModelGrid(pl.LightningModule):
             )
 
             plt.figure(figsize=(20, 20))
-            plt.imshow(result[0, 0, i, :, :], vmin=-1, vmax=2)
+            plt.imshow(result[0, i, 0, :, :], vmin=-1, vmax=2)
             plt.colorbar()
 
             plt.savefig(fname, bbox_inches="tight", pad_inches=0)
