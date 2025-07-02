@@ -56,7 +56,7 @@ if __name__ == "__main__":
     model.compile()
 
     callback = ModelCheckpoint(
-        every_n_epochs=3,
+        every_n_epochs=1,
         save_last=True,
         dirpath="models/meteolibre_vae_rope3d/",
         save_weights_only=True,
