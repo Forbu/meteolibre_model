@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=4,
+        batch_size=16,
         shuffle=True,
         num_workers=8,
     )  # )
@@ -68,8 +68,8 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         max_time={"hours": 4},
         logger=logger,
-        accumulate_grad_batches=4,
-        # fast_dev_run=True,
+        #accumulate_grad_batches=4,
+        #fast_dev_run=True,
         # accelerator="cpu", # debug
         callbacks=[callback],
         gradient_clip_val=1.0,

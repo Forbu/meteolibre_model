@@ -145,7 +145,9 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # 2. pass though DiT
         # resize to (batch_size, H * W * nb_frame, embed_dim)
         latents_sample_patch = einops.rearrange(
-            latents_sample_patch, "(b t) nb_patch c -> b (t nb_patch) c", t=self.nb_frames
+            latents_sample_patch,
+            "(b t) nb_patch c -> b (t nb_patch) c",
+            t=self.nb_frames,
         )
 
         dummy_time = torch.zeros(
@@ -160,7 +162,6 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         return dit_encoded_latent
 
     def decode(self, z):
-
         dummy_time = torch.zeros(
             (z.shape[0], self.latent_dim),
             device=z.device,
@@ -205,7 +206,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        z = self.encode( x_image)
+        z = self.encode(x_image)
         final_image = self.decode(z)
 
         return final_image, (z)
@@ -238,19 +239,30 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         final_image, latent = self(x_image)
 
         reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
-        reconstruction_loss = reconstruction_loss * x_mask
-        reconstruction_loss = reconstruction_loss.sum() / x_mask.sum()
+
+        reconstruction_loss_radar = (
+            reconstruction_loss[:, :, [0], :, :] * mask_radar.permute(0, 1, 4, 2, 3)
+        ).mean()
+
+        reconstruction_loss_groundstation = (
+            reconstruction_loss[:, :, 1:, :, :]
+            * mask_groundstation.permute(0, 1, 4, 2, 3)
+        ).sum() / mask_groundstation.sum()
+
+        reconstruction_loss = (
+            reconstruction_loss_radar + reconstruction_loss_groundstation * 0.1
+            # 100 is a factor to balance the loss between radar and sparse groundstation.
+        )
 
         self.log("reconstruction_loss", reconstruction_loss)
+        self.log("reconstruction_loss_radar", reconstruction_loss_radar)
+        self.log("reconstruction_loss_groundstation", reconstruction_loss_groundstation)
 
         regularization_loss = F.mse_loss(
             latent, torch.zeros_like(latent), reduction="mean"
         )
 
         self.log("regularization_loss", regularization_loss)
-
-        print("reconstruction_loss:", reconstruction_loss.item())
-        print("regularization_loss:", regularization_loss.item())
 
         loss = reconstruction_loss + self.coefficient_reg * regularization_loss
 
@@ -298,7 +310,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
-        final_image, latent = self(x_image, x_mask)
+        final_image, latent = self(x_image)
 
         return final_image, x_image
 
@@ -309,20 +321,19 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
 
-        self.save_image(result[0, 0, 0, :, :], name_append="result")
-        self.save_image(x_image_future[0, 0, 0, :, :], name_append="target")
+        for i in range(result.shape[2]):
+            self.save_image(result[0, 0, i, :, :], name_append="result_T_{i}")
+            self.save_image(x_image_future[0, 0, i, :, :], name_append="target_T_{i}")
 
-        self.save_gif(result, name_append="result_gif_vae")
-        self.save_gif(x_image_future, name_append="target_gif_vae")
+        # self.save_gif(result, name_append="result_gif_vae")
+        # self.save_gif(x_image_future, name_append="target_gif_vae")
 
         self.train()
 
     def save_image(self, result, name_append="result"):
         radar_image = result.cpu().detach().numpy()  # (H, W)
 
-        fname = (
-            self.dir_save + f"data/{name_append}_radar_epoch_{self.current_epoch}.png"
-        )
+        fname = self.dir_save + f"data/{name_append}_epoch_{self.current_epoch}.png"
 
         plt.figure(figsize=(20, 20))
         plt.imshow(radar_image, vmin=-1, vmax=2)
