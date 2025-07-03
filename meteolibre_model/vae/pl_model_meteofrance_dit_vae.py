@@ -216,7 +216,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         final_image = self.decode(z)
 
-        return final_image, (final_latent_mean, final_latent_logvar)
+        return final_image, (final_latent_mean, final_latent_logvar, z)
 
     def training_step(self, batch, batch_idx):
         """
@@ -243,7 +243,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
-        final_image, (final_latent_mean, final_latent_logvar) = self(x_image)
+        final_image, (final_latent_mean, final_latent_logvar, z) = self(x_image)
 
         reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
 
@@ -332,8 +332,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
 
         result, x_image_future, latent = self.generate_one(nb_batch=1, nb_step=100)
 
-        print("latent mean", latent.mean())
-        print("latent std", latent.std())
+        print("latent mean", latent[2].mean())
+        print("latent std", latent[2].std())
 
         for i in range(result.shape[2]):
             self.save_image(result[0, 0, i, :, :], name_append=f"result_T_{i}")
