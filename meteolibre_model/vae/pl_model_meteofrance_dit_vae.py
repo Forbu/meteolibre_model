@@ -41,7 +41,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         input_channels=5,
         output_channels=5,
         latent_dim=16,
-        coefficient_reg=0.01,
+        coefficient_reg=0.000001,
         nb_frames=6,
     ):
         """
@@ -101,6 +101,8 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             max_d=nb_frames,
         )
 
+        self.latent_final = nn.Linear(latent_dim, 2 * latent_dim, bias=True)
+
         self.dit_decoder = DiT(
             num_patches=32 * 32 * nb_frames,  # if 2d with flatten size
             hidden_size=latent_dim,
@@ -156,10 +158,16 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
             dtype=torch.float32,
         )
 
-        # pass through DiT encoder
+        # pass through DiT encoder size (batch_size, H * W * nb_frame, embed_dim)
         dit_encoded_latent = self.dit_encoder(latents_sample_patch, dummy_time)
 
-        return dit_encoded_latent
+        # getting the mean and std of the latent space
+        final_latent = self.latent_final(dit_encoded_latent)
+
+        final_latent_mean = final_latent[:, :, : self.latent_dim]
+        final_latent_std = final_latent[:, :, self.latent_dim :]
+
+        return final_latent_mean, final_latent_std
 
     def decode(self, z):
         dummy_time = torch.zeros(
@@ -178,13 +186,6 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         decoder_latents_unpatch = einops.rearrange(
             decoder_latents, "b (h w) d -> b d h w", h=32, w=32
         )
-
-        # 3. unpatchify
-        # decoder_latents_final = self.final_layer(
-        #    decoder_latents
-        # )  # (N, T, patch_size ** 2 * out_channels)
-
-        # decoder_latents_unpatch = self.unpatchify(decoder_latents_final)
 
         # decoder cnn anti
         final_image = self.model.decode(decoder_latents_unpatch).sample
@@ -206,10 +207,16 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        z = self.encode(x_image)
+        final_latent_mean, final_latent_logvar = self.encode(x_image)
+
+        # sample with reparametrization trick
+        z = final_latent_mean + torch.randn_like(final_latent_mean) * torch.exp(
+            0.5 * final_latent_logvar
+        )
+
         final_image = self.decode(z)
 
-        return final_image, (z)
+        return final_image, (final_latent_mean, final_latent_logvar)
 
     def training_step(self, batch, batch_idx):
         """
@@ -236,7 +243,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
-        final_image, latent = self(x_image)
+        final_image, (final_latent_mean, final_latent_logvar) = self(x_image)
 
         reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
 
@@ -250,7 +257,7 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         ).sum() / mask_groundstation.sum()
 
         reconstruction_loss = (
-            reconstruction_loss_radar + reconstruction_loss_groundstation * 0.1
+            reconstruction_loss_radar + reconstruction_loss_groundstation * 0.3
             # 100 is a factor to balance the loss between radar and sparse groundstation.
         )
 
@@ -258,13 +265,17 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         self.log("reconstruction_loss_radar", reconstruction_loss_radar)
         self.log("reconstruction_loss_groundstation", reconstruction_loss_groundstation)
 
-        regularization_loss = F.mse_loss(
-            latent, torch.zeros_like(latent), reduction="mean"
+        # KL regularizatio loss
+        kl_loss = torch.mean(
+            -0.5
+            * torch.sum(
+                1 + final_latent_logvar - final_latent_mean**2 - final_latent_logvar.exp(), dim=1
+            ),
         )
 
-        self.log("regularization_loss", regularization_loss)
+        self.log("kl_loss", kl_loss)
 
-        loss = reconstruction_loss + self.coefficient_reg * regularization_loss
+        loss = reconstruction_loss + self.coefficient_reg * kl_loss
 
         return loss
 
@@ -312,18 +323,21 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         # forward pass
         final_image, latent = self(x_image)
 
-        return final_image, x_image
+        return final_image, x_image, latent
 
     # on epoch end of training
     def on_train_epoch_end(self):
         # generate image
         self.eval()
 
-        result, x_image_future = self.generate_one(nb_batch=1, nb_step=100)
+        result, x_image_future, latent = self.generate_one(nb_batch=1, nb_step=100)
+
+        print("latent mean", latent.mean())
+        print("latent std", latent.std())
 
         for i in range(result.shape[2]):
-            self.save_image(result[0, 0, i, :, :], name_append="result_T_{i}")
-            self.save_image(x_image_future[0, 0, i, :, :], name_append="target_T_{i}")
+            self.save_image(result[0, 0, i, :, :], name_append=f"result_T_{i}")
+            self.save_image(x_image_future[0, 0, i, :, :], name_append=f"target_T_{i}")
 
         # self.save_gif(result, name_append="result_gif_vae")
         # self.save_gif(x_image_future, name_append="target_gif_vae")
@@ -346,21 +360,6 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         self.logger.log_image(
             key=name_append, images=[wandb.Image(fname)], caption=[name_append]
         )
-
-    def unpatchify(self, x):
-        """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
-        """
-        c = self.latent_dim
-        p = self.patch_size
-        h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
-
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-        x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
-        return imgs
 
     def save_gif(self, result, name_append="result", duration=10):
         nb_frame = result.shape[1]
