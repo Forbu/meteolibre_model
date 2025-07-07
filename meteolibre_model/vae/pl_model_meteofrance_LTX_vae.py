@@ -72,7 +72,8 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
             ),
             decoder_block_out_channels=(128 // 4, 256 // 4, 512 // 4, 512 // 4),
             layers_per_block=(4, 3, 3, 3, 4),
-            patch_size=8,
+            patch_size=4,
+            spatial_compression_ratio=8,
             decoder_layers_per_block=(4, 3, 3, 3, 4),
             spatio_temporal_scaling=(False, False, False, False),
             decoder_spatio_temporal_scaling=(False, False, False, False),
@@ -99,16 +100,21 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
             torch.Tensor: Output tensor from the model.
         """
         batch_size, nb_frame, c, h, w = x_image.shape
-        
-        x_image = einops.rearrange(x_image, "batch_size nb_frame c h w -> batch_size c nb_frame h w")
+
+        x_image = einops.rearrange(
+            x_image, "batch_size nb_frame c h w -> batch_size c nb_frame h w"
+        )
 
         encode_input = self.model.encode(x_image)
 
-        return encode_input.latent_dist.mean, encode_input.latent_dist.logvar, encode_input.latent_dist.sample()
+        return (
+            encode_input.latent_dist.mean,
+            encode_input.latent_dist.logvar,
+            encode_input.latent_dist.sample(),
+        )
 
     def decode(self, z):
-        
-        # decoder 
+        # decoder
         final_image = self.model.decode(z).sample
 
         # reshape
@@ -119,7 +125,7 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         return final_image
 
     def forward(self, x_image):
-        """
+        """P
         Forward pass through the model.
 
         Args:
@@ -132,7 +138,7 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
 
         final_image = self.decode(sample)
 
-        return final_image, (final_latent_mean, final_latent_logvar, z)
+        return final_image, (final_latent_mean, final_latent_logvar, sample)
 
     def training_step(self, batch, batch_idx):
         """
@@ -150,6 +156,11 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         # mask radar
         mask_radar = torch.ones_like(radar_data)
         mask_groundstation = groundstation_data != -1
+
+        # random masking to force generalization
+        groundstation_data = torch.where(
+            torch.rand_like(groundstation_data) > 0.2, groundstation_data, -1
+        )
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
@@ -190,7 +201,6 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
                 - final_latent_mean**2
                 - final_latent_logvar.exp(),
                 dim=1,
-                1 + final_latent_logvar - final_latent_mean**2 - final_latent_logvar.exp(), dim=1
             ),
         )
 
@@ -251,17 +261,18 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         # generate image
         self.eval()
 
-        result, x_image_future, latent = self.generate_one(nb_batch=1, nb_step=100)
+        with torch.no_grad():
+            result, x_image_future, latent = self.generate_one(nb_batch=1, nb_step=100)
 
-        print("latent mean", latent[2].mean())
-        print("latent std", latent[2].std())
+            print("latent mean", latent[2].mean())
+            print("latent std", latent[2].std())
 
-        for i in range(result.shape[2]):
-            self.save_image(result[0, 0, i, :, :], name_append=f"result_T_{i}")
-            self.save_image(x_image_future[0, 0, i, :, :], name_append=f"target_T_{i}")
+            for i in range(result.shape[2]):
+                self.save_image(result[0, 0, i, :, :], name_append=f"result_T_{i}")
+                self.save_image(x_image_future[0, 0, i, :, :], name_append=f"target_T_{i}")
 
-        # self.save_gif(result, name_append="result_gif_vae")
-        # self.save_gif(x_image_future, name_append="target_gif_vae")
+            # self.save_gif(result, name_append="result_gif_vae")
+            # self.save_gif(x_image_future, name_append="target_gif_vae")
 
         self.train()
 

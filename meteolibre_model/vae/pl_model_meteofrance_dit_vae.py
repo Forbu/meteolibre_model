@@ -313,6 +313,11 @@ class VAEMeteoLibrePLModelDitVae(pl.LightningModule):
         mask_radar = torch.ones_like(radar_data)
         mask_groundstation = groundstation_data != -1
 
+        # we randomly mask data in input so that the model learn to extrapolate the the whole map
+        groundstation_data = torch.where(
+            torch.rand_like(groundstation_data) > 0.2, -1, groundstation_data
+        )
+
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
         x_mask = torch.cat((mask_radar, mask_groundstation), dim=-1)

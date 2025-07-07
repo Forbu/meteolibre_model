@@ -43,7 +43,7 @@ if __name__ == "__main__":
         train_dataset,
         batch_size=16,
         shuffle=True,
-        num_workers=8,
+        num_workers=16,
     )  # )
     val_dataloader = DataLoader(
         val_dataset, batch_size=1, shuffle=True
@@ -53,7 +53,7 @@ if __name__ == "__main__":
         test_dataloader=val_dataloader,
     )
 
-    model.compile()
+    #model.compile()
 
     callback = ModelCheckpoint(
         every_n_epochs=1,
