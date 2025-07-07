@@ -150,17 +150,18 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
 
         # little correction
         groundstation_data = torch.where(
-            groundstation_data == -100, -1, groundstation_data
+            groundstation_data == -100, -4, groundstation_data
         )
 
         # mask radar
         mask_radar = torch.ones_like(radar_data)
-        mask_groundstation = groundstation_data != -1
+        mask_groundstation = groundstation_data != -4
 
         # random masking to force generalization
         groundstation_data = torch.where(
-            torch.rand_like(groundstation_data) > 0.2, groundstation_data, -1
+            torch.rand_like(groundstation_data) > 0.2, groundstation_data, -4
         )
+
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
@@ -237,12 +238,12 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
 
         # little correction
         groundstation_data = torch.where(
-            groundstation_data == -100, -1, groundstation_data
+            groundstation_data == -100, -4, groundstation_data
         )
 
         # mask radar
         mask_radar = torch.ones_like(radar_data)
-        mask_groundstation = groundstation_data != -1
+        mask_groundstation = groundstation_data != -4
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
@@ -307,7 +308,7 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
             radar_image = result[0, i, 0, :, :].cpu().numpy()
 
             plt.figure(figsize=(20, 20))
-            plt.imshow(radar_image, vmin=-1, vmax=2)
+            plt.imshow(radar_image, vmin=-4, vmax=2)
             plt.colorbar()
 
             plt.savefig(fname, bbox_inches="tight", pad_inches=0)

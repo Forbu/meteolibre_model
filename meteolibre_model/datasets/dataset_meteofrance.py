@@ -50,11 +50,11 @@ def read_record(record):
         )
         raise ("Error")
 
-    gs_back_data = np.where(gs_back_data == -100, -1, gs_back_data)
-    gs_back_data = np.where(np.isnan(gs_back_data), -1, gs_back_data)
+    gs_back_data = np.where(gs_back_data == -100, -4, gs_back_data)
+    gs_back_data = np.where(np.isnan(gs_back_data), -4, gs_back_data)
 
-    gs_future_data = np.where(gs_future_data == -100, -1, gs_future_data)
-    gs_future_data = np.where(np.isnan(gs_future_data), -1, gs_future_data)
+    gs_future_data = np.where(gs_future_data == -100, -4, gs_future_data)
+    gs_future_data = np.where(np.isnan(gs_future_data), -4, gs_future_data)
 
     return {
         "radar_back": radar_back_data,  # The NumPy array itself
