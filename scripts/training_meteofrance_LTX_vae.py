@@ -25,8 +25,10 @@ torch.set_float32_matmul_precision("medium")
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
+PATHDATA = "/workspace/meteolibre_model/hf_dataset/"
+
 def init_dataset():
-    dataset = MeteoLibreDataset(directory="/teamspace/studios/this_studio/hf_dataset/")
+    dataset = MeteoLibreDataset(directory=PATHDATA)
 
     return dataset
 
@@ -51,6 +53,7 @@ if __name__ == "__main__":
 
     model = VAEMeteoLibrePLModelLTXVae(
         test_dataloader=val_dataloader,
+        dir_save="./",
     )
 
     #model.compile()

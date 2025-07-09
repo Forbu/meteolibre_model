@@ -5,12 +5,51 @@ This is the module to handle the dataloading from the huggingface dataset
 from datetime import datetime
 import pandas as pd
 import os
+import json
 
-import torch
-from datasets import load_dataset
 import numpy as np
 from numpy.random import default_rng
 
+import torch
+
+def load_jsonl_to_dataframe(file_path):
+    """
+    Reads a .jsonl file line by line and loads it into a pandas DataFrame.
+
+    Args:
+        file_path (str): The path to the .jsonl file.
+
+    Returns:
+        pandas.DataFrame: A DataFrame containing the data from the file,
+                          or None if the file is not found or is empty.
+    """
+    data_list = []
+    try:
+        # Open the file for reading. The 'with' statement ensures the file is properly closed.
+        with open(file_path, 'r') as f:
+            # Iterate over each line in the file.
+            for line in f:
+                # Each line is a JSON string, so we parse it into a dictionary
+                # and append it to our list. We use strip() to remove any potential trailing newline characters.
+                if line.strip():  # Ensure the line is not empty
+                    try:
+                        data_list.append(json.loads(line))
+                    except json.JSONDecodeError as e:
+                        print(f"Skipping line due to JSON decoding error: {e}")
+                        print(f"Problematic line: {line.strip()}")
+
+        # Create a pandas DataFrame from the list of dictionaries if data was loaded.
+        if data_list:
+            df = pd.DataFrame(data_list)
+            return df
+        else:
+            print("No data was loaded. The file might be empty or all lines had errors.")
+            return None
+
+    except FileNotFoundError:
+        print(f"Error: The file '{file_path}' was not found.")
+        print("Please make sure the file exists and the path is correct.")
+        return None
 
 def read_record(record):
     """Reads a single line from the dataset."""
@@ -78,7 +117,7 @@ class MeteoLibreDataset(torch.utils.data.dataset.Dataset):
 
         # index reader
         self.json_path = os.path.join(self.directory, "index.json")
-        self.index_data = pd.read_json(self.json_path, orient="columns", lines=True)
+        self.index_data = load_jsonl_to_dataframe(self.json_path)
 
         for columns in self.index_data.columns:
             if "file" in columns:
