@@ -37,11 +37,11 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         learning_rate=1e-3,
         test_dataloader=None,
         dir_save="../",
-        input_channels=5,
-        output_channels=5,
+        input_channels=8,
+        output_channels=8,
         latent_dim=16,
         coefficient_reg=0.000001,
-        nb_frames=6,
+        nb_frames=5,
     ):
         """
         Initialize the MeteoLibrePLModel.
@@ -154,35 +154,29 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         )
 
         # mask radar
-        mask_radar = torch.ones_like(radar_data)
+        mask_radar = torch.ones_like(radar_data).bool()
         mask_groundstation = groundstation_data != -4
 
         # random masking to force generalization
-        groundstation_data = torch.where(
-            torch.rand_like(groundstation_data) > 0.2, groundstation_data, -4
+        groundstation_data_corrupt = torch.where(
+            torch.rand_like(groundstation_data) > 0.1, groundstation_data, -4
         )
-
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
-        x_mask = torch.cat((mask_radar, mask_groundstation), dim=-1)
-
         x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
-        x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
+        x_image_corrupt = torch.cat((radar_data, groundstation_data_corrupt), dim=-1)
+        x_image_corrupt = x_image_corrupt.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
+
+        mask_radar = mask_radar.permute(0, 1, 4, 2, 3)
+        mask_groundstation = mask_groundstation.permute(0, 1, 4, 2, 3)
+        
         # forward pass
-        final_image, (final_latent_mean, final_latent_logvar, z) = self(x_image)
+        final_image, (final_latent_mean, final_latent_logvar, z) = self(x_image_corrupt)
 
-        reconstruction_loss = F.mse_loss(final_image, x_image, reduction="none")
-
-        reconstruction_loss_radar = (
-            reconstruction_loss[:, :, [0], :, :] * mask_radar.permute(0, 1, 4, 2, 3)
-        ).mean()
-
-        reconstruction_loss_groundstation = (
-            reconstruction_loss[:, :, 1:, :, :]
-            * mask_groundstation.permute(0, 1, 4, 2, 3)
-        ).sum() / mask_groundstation.sum()
+        reconstruction_loss_radar = F.mse_loss(final_image[:, :, [0], :, :][mask_radar], x_image[:, :, [0], :, :][mask_radar], reduction="mean")
+        reconstruction_loss_groundstation = F.mse_loss(final_image[:, :, 1:, :, :][mask_groundstation], x_image[:, :, 1:, :, :][mask_groundstation], reduction="mean")
 
         reconstruction_loss = (
             reconstruction_loss_radar + reconstruction_loss_groundstation * 0.3
@@ -247,10 +241,8 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
 
         # concat the two elements
         x_image = torch.cat((radar_data, groundstation_data), dim=-1)
-        x_mask = torch.cat((mask_radar, mask_groundstation), dim=-1)
 
         x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
-        x_mask = x_mask.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W))
 
         # forward pass
         final_image, latent = self(x_image)
