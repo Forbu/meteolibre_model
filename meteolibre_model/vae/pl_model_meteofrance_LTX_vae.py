@@ -159,7 +159,7 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
 
         # random masking to force generalization
         groundstation_data_corrupt = torch.where(
-            torch.rand_like(groundstation_data) > 0.1, groundstation_data, -4
+            torch.rand_like(groundstation_data) > 0.3, groundstation_data, -4
         )
 
         # concat the two elements
