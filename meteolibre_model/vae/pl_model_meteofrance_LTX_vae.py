@@ -63,14 +63,14 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
             in_channels=input_channels,
             out_channels=output_channels,
             latent_channels=latent_dim,
-            block_out_channels=(128 // 4, 256 // 4, 512 // 4, 512 // 4),
+            block_out_channels=(128 // 2, 256 // 2, 512 // 2, 512 // 2),
             down_block_types=(
                 "LTXVideoDownBlock3D",
                 "LTXVideoDownBlock3D",
                 "LTXVideoDownBlock3D",
                 "LTXVideoDownBlock3D",
             ),
-            decoder_block_out_channels=(128 // 4, 256 // 4, 512 // 4, 512 // 4),
+            decoder_block_out_channels=(128 // 2, 256 // 2, 512 // 2, 512 // 2),
             layers_per_block=(4, 3, 3, 3, 4),
             patch_size=4,
             spatial_compression_ratio=8,
@@ -187,7 +187,6 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         
         reconstruction_loss = (
             reconstruction_loss_radar + reconstruction_loss_groundstation * 0.3 + reconstruction_ground * 0.01
-            # 100 is a factor to balance the loss between radar and sparse groundstation.
         )
 
         # logging data
@@ -222,7 +221,7 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
             torch.optim.Optimizer: Adam optimizer.
         """
         # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False)
+        optimizer = ForeachSOAP(self.parameters(), lr=self.learning_rate, foreach=False, warmup_steps=50)
         return optimizer
 
     @torch.no_grad()
