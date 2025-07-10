@@ -37,8 +37,8 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         learning_rate=1e-3,
         test_dataloader=None,
         dir_save="../",
-        input_channels=8,
-        output_channels=8,
+        input_channels=13,
+        output_channels=13,
         latent_dim=16,
         coefficient_reg=0.000001,
         nb_frames=5,
@@ -148,6 +148,12 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         radar_data = batch["radar_back"].unsqueeze(-1)
         groundstation_data = batch["groundstation_back"]
 
+        groundheight = batch["ground_height"].unsqueeze(-1).unsqueeze(1).float()
+        landcover = batch["landcover"].unsqueeze(1).float()
+
+        groundheight = groundheight.repeat(1, self.nb_frames, 1, 1, 1)
+        landcover = landcover.repeat(1, self.nb_frames, 1, 1, 1)
+        
         # little correction
         groundstation_data = torch.where(
             groundstation_data == -100, -4, groundstation_data
@@ -163,10 +169,10 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         )
 
         # concat the two elements
-        x_image = torch.cat((radar_data, groundstation_data), dim=-1)
+        x_image = torch.cat((groundheight, landcover, radar_data, groundstation_data), dim=-1)
         x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
 
-        x_image_corrupt = torch.cat((radar_data, groundstation_data_corrupt), dim=-1)
+        x_image_corrupt = torch.cat((groundheight, landcover, radar_data, groundstation_data_corrupt), dim=-1)
         x_image_corrupt = x_image_corrupt.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
 
         mask_radar = mask_radar.permute(0, 1, 4, 2, 3)
@@ -175,17 +181,20 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         # forward pass
         final_image, (final_latent_mean, final_latent_logvar, z) = self(x_image_corrupt)
 
-        reconstruction_loss_radar = F.mse_loss(final_image[:, :, [0], :, :][mask_radar], x_image[:, :, [0], :, :][mask_radar], reduction="mean")
-        reconstruction_loss_groundstation = F.mse_loss(final_image[:, :, 1:, :, :][mask_groundstation], x_image[:, :, 1:, :, :][mask_groundstation], reduction="mean")
-
+        reconstruction_loss_radar = F.mse_loss(final_image[:, :, [5], :, :][mask_radar], x_image[:, :, [5], :, :][mask_radar], reduction="mean")
+        reconstruction_loss_groundstation = F.mse_loss(final_image[:, :, 6:, :, :][mask_groundstation], x_image[:, :, 6:, :, :][mask_groundstation], reduction="mean")
+        reconstruction_ground = F.mse_loss(final_image[:, :, :5, :, :], x_image[:, :, :5, :, :], reduction="mean")
+        
         reconstruction_loss = (
-            reconstruction_loss_radar + reconstruction_loss_groundstation * 0.3
+            reconstruction_loss_radar + reconstruction_loss_groundstation * 0.3 + reconstruction_ground * 0.01
             # 100 is a factor to balance the loss between radar and sparse groundstation.
         )
 
+        # logging data
         self.log("reconstruction_loss", reconstruction_loss)
         self.log("reconstruction_loss_radar", reconstruction_loss_radar)
         self.log("reconstruction_loss_groundstation", reconstruction_loss_groundstation)
+        self.log("reconstruction_loss_ground_info", reconstruction_ground)
 
         # KL regularizatio loss
         kl_loss = torch.mean(
@@ -230,6 +239,12 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         radar_data = batch["radar_back"].unsqueeze(-1)
         groundstation_data = batch["groundstation_back"]
 
+        groundheight = batch["ground_height"].unsqueeze(-1).unsqueeze(1).float()
+        landcover = batch["landcover"].unsqueeze(1).float()
+
+        groundheight = groundheight.repeat(1, self.nb_frames, 1, 1, 1)
+        landcover = landcover.repeat(1, self.nb_frames, 1, 1, 1)
+
         # little correction
         groundstation_data = torch.where(
             groundstation_data == -100, -4, groundstation_data
@@ -240,7 +255,7 @@ class VAEMeteoLibrePLModelLTXVae(pl.LightningModule):
         mask_groundstation = groundstation_data != -4
 
         # concat the two elements
-        x_image = torch.cat((radar_data, groundstation_data), dim=-1)
+        x_image = torch.cat((groundheight, landcover, radar_data, groundstation_data), dim=-1)
 
         x_image = x_image.permute(0, 1, 4, 2, 3)  # (N, nb_frame, C, H, W)
 

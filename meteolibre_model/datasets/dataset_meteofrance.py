@@ -60,6 +60,7 @@ def read_record(record):
     gs_back = record["groundstation_file_path_back"]
 
     height = record["ground_height_file_path"]
+    landcover = record["landcover_file_path"]
 
     hour = record["hour"]
     minutes = record["minute"]
@@ -83,6 +84,7 @@ def read_record(record):
         gs_future_data = np.load(gs_future)["arr_0"]
         gs_back_data = np.load(gs_back)["arr_0"]
         height_data = np.load(height)["arr_0"]
+        landcover_data = np.load(landcover)["arr_0"]
     except Exception as e:
         print(
             f"Error loading data from {radar_back_file}, {radar_back_future}, {gs_future}, {gs_back}, {height}: {e}"
@@ -101,6 +103,7 @@ def read_record(record):
         "groundstation_future": gs_future_data,  # The NumPy array itself
         "groundstation_back": gs_back_data,  # The NumPy array itself
         "ground_height": height_data,  # The NumPy array itself
+        "landcover": landcover_data,
         "hour": hour / 24.,  # The scalar value
         "minute": minutes / 60.,  # The scalar value
         # "time_radar_back": time_radar_back,  # The scalar value
